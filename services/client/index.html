@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iron &amp; Arcane: Arena Duel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Cpath d=%22M50 6 L58 14 L26 46 L18 38 Z%22 fill=%22%23d9b56a%22/%3E%3Cpath d=%22M12 38 L26 52 L22 56 L8 42 Z%22 fill=%22%23d9b56a%22/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600;800&display=swap">
+  <link rel="stylesheet" href="/services/client/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/node_modules/three/build/three.module.js",
+        "three/addons/": "/node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="hud-top"><div id="center-info"></div></div>
+    <div id="overheads"></div>
+    <div id="floaters"></div>
+    <div id="banner"></div>
+    <div id="hud-bottom"></div>
+    <div id="hud-hint">ESC pause · M mute</div>
+  </div>
+
+  <div id="menu" class="screen">
+    <header>
+      <h1>Iron <span>&amp;</span> Arcane</h1>
+      <p class="tag">1v1 arena duel · Warrior vs Mage</p>
+    </header>
+    <nav class="modes">
+      <button data-mode="cpu" class="mode active"><b>vs CPU</b><span>Duel a bot</span></button>
+      <button data-mode="local" class="mode"><b>Local</b><span>2 players, 1 screen</span></button>
+      <button data-mode="online" class="mode"><b>Online</b><span>Host or join a room</span></button>
+    </nav>
+    <section id="setup"></section>
+    <footer class="controls">
+      <div><kbd>W A S D</kbd> move</div>
+      <div><kbd>Mouse</kbd> aim</div>
+      <div><kbd>LMB</kbd> basic attack</div>
+      <div><kbd>RMB</kbd> heavy / lightning</div>
+      <div><kbd>Space</kbd> charge / blink</div>
+      <div><kbd>Q E R</kbd> abilities</div>
+      <div><kbd>Gamepad</kbd> supported</div>
+    </footer>
+  </div>
+
+  <div id="pause" class="screen overlay hidden">
+    <div class="panel">
+      <h2>Paused</h2>
+      <button id="resume" class="primary">Resume</button>
+      <button id="quit">Main menu</button>
+    </div>
+  </div>
+
+  <div id="end" class="screen overlay hidden">
+    <div class="panel wide">
+      <h2 id="end-title"></h2>
+      <div id="end-stats"></div>
+      <div class="row">
+        <button id="rematch" class="primary">Rematch</button>
+        <button id="end-menu">Main menu</button>
+      </div>
+      <p id="end-note"></p>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script type="module" src="/services/client/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "arena-duel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isometric 1v1 medieval arena duel: Warrior vs Mage. Argentum Online classes, Battlerite pace.",
+  "type": "module",
+  "scripts": {
+    "start": "node services/server/index.js",
+    "share": "node scripts/share.mjs",
+    "test": "node --test \"services/**/test/*.test.js\" \"scripts/test/*.test.js\"",
+    "eval": "node evals/balance.mjs"
+  },
+  "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "three": "^0.186.1",
+    "ws": "^8.21.3"
+  }
+}

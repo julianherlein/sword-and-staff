@@ -1,0 +1,3 @@
+#!/bin/sh
+# Gate tests: deterministic, local, under a second.
+npm test --silent

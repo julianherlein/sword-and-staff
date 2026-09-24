@@ -2,3 +2,5 @@ node_modules/
 .env
 evals/results/
 *.log
+.playwright-mcp/
+.claude/
