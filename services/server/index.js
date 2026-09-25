@@ -93,7 +93,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const lagMs = argLag > 0 ? Number(process.argv[argLag + 1]) || 0 : 0;
   const { server } = createServer({ lagMs, log: console.log });
   server.listen(port, () => {
-    console.log(`Arena Duel running:  http://localhost:${port}`);
+    console.log(`Sword & Staff running: http://localhost:${port}`);
     if (lagMs) console.log(`  simulating ${lagMs}ms round-trip latency on every connection (dev)`);
     for (const ip of lanAddresses()) console.log(`  on your network:    http://${ip}:${port}`);
     console.log('Connections are logged below (+ connect, - disconnect).');

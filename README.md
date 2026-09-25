@@ -1,4 +1,4 @@
-# Iron & Arcane: 1v1 Arena Duel
+# Sword & Staff: 1v1 Arena Duel
 
 An isometric, medieval 1v1 arena brawler. **Argentum Online's** Warrior vs Mage duel (health, mana,
 sword against spells) played at **Battlerite's** pace: free movement, mouse-aimed skillshots,
@@ -44,7 +44,7 @@ folder, or you can set `CLOUDFLARED=<path>`.
 
 ```bash
 npx wrangler login   # once
-npm run deploy       # https://iron-and-arcane.<your-subdomain>.workers.dev
+npm run deploy       # https://sword-and-staff.<your-subdomain>.workers.dev
 ```
 
 The same game server runs as a Cloudflare Worker plus one Durable Object, on the free plan. The
