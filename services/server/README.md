@@ -30,4 +30,22 @@
   across rematches.
   Rematch starts when both players ask for it. A disconnect ends the room and tells the opponent.
 
-Tests: `node --test services/server/test/` (includes a real WebSocket round trip).
+## Connection log
+
+`npm start` and `npm run share` print who is connected (`presence.js`). Players are anonymous, so a
+player is a connection number, IP and browser:
+
+```
+2026-09-24 22:00:55  + #1 connected from 198.51.100.7 (Chrome/Windows)  online: 1
+2026-09-24 22:00:55  + #2 connected from 127.0.0.1 (Safari/iOS)  online: 2
+2026-09-24 22:00:55    #1 opened room 3FC6 as mage
+2026-09-24 22:00:55    #2 joined room 3FC6 as warrior: #1 mage vs #2 warrior
+2026-09-24 22:00:57  - #1 disconnected after 2s  online: 1
+```
+
+Queue lines read `#3 queued as mage` and `matched #3 mage vs #4 warrior in room KQ7M`.
+Behind the `npm run share` tunnel every socket comes from localhost, so the IP is read from
+`CF-Connecting-IP` (or `X-Forwarded-For`), and only when the peer is loopback. Anyone else sending
+those headers is logged under their real address. `createServer()` is silent unless given `log`.
+
+Tests: `node --test "services/server/test/*.test.js"` (includes a real WebSocket round trip).

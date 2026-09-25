@@ -7,6 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { WebSocketServer } from 'ws';
 import { RoomManager } from './rooms.js';
+import { createPresence } from './presence.js';
 import { createTicker } from './ticker.js';
 import { TICK_RATE } from '../sim/constants.js';
 
@@ -34,8 +35,11 @@ export function resolvePublic(urlPath) {
 
 // `lagMs` (dev only): simulated round-trip latency added to every WebSocket message, half each way.
 // `matchFoundSecs`: countdown between a queue pairing and the match start (tests shorten it).
-export function createServer({ lagMs = 0, matchFoundSecs } = {}) {
-  const rooms = new RoomManager({ matchFoundSecs });
+// `log`: where the connection log goes (who connected, queued, matched, left). Silent by default;
+// the CLI and `npm run share` pass console.log.
+export function createServer({ lagMs = 0, matchFoundSecs, log = null } = {}) {
+  const presence = createPresence({ log: log || (() => {}) });
+  const rooms = new RoomManager({ matchFoundSecs, onEvent: (e) => presence.room(e) });
   const server = http.createServer(async (req, res) => {
     const file = resolvePublic(req.url);
     if (!file) { res.writeHead(404).end('not found'); return; }
@@ -49,26 +53,30 @@ export function createServer({ lagMs = 0, matchFoundSecs } = {}) {
   });
 
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     const delay = (fn) => (lagMs > 0 ? setTimeout(fn, lagMs / 2) : fn()); // equal delays keep order
     const send = (obj) => {
       const data = JSON.stringify(obj);
       delay(() => { if (ws.readyState === ws.OPEN) ws.send(data); });
     };
-    const conn = rooms.connect(send);
+    const id = presence.connect(req);
+    const conn = rooms.connect(send, id);
     ws.on('message', (data) => {
       let msg;
       try { msg = JSON.parse(data.toString()); } catch { return; }
       delay(() => conn.message(msg));
     });
-    ws.on('close', () => delay(conn.close)); // same delay as messages, so a lagged join cannot outlive its socket
+    ws.on('close', () => {
+      presence.disconnect(id);
+      delay(conn.close); // same delay as messages, so a lagged join cannot outlive its socket
+    });
   });
 
   // Poll faster than the tick rate; the ticker decides how many sim ticks real time allows.
   const advance = createTicker(() => rooms.tick(), TICK_RATE);
   const loop = setInterval(advance, 4);
   server.on('close', () => { clearInterval(loop); wss.close(); });
-  return { server, rooms };
+  return { server, rooms, presence };
 }
 
 function lanAddresses() {
@@ -80,10 +88,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const port = Number(argPort > 0 ? process.argv[argPort + 1] : process.env.PORT) || 8080;
   const argLag = process.argv.indexOf('--lag');
   const lagMs = argLag > 0 ? Number(process.argv[argLag + 1]) || 0 : 0;
-  const { server } = createServer({ lagMs });
+  const { server } = createServer({ lagMs, log: console.log });
   server.listen(port, () => {
     console.log(`Arena Duel running:  http://localhost:${port}`);
     if (lagMs) console.log(`  simulating ${lagMs}ms round-trip latency on every connection (dev)`);
     for (const ip of lanAddresses()) console.log(`  on your network:    http://${ip}:${port}`);
+    console.log('Connections are logged below (+ connect, - disconnect).');
   });
 }

@@ -34,10 +34,13 @@ function resetInputs(room) {
 }
 
 export class RoomManager {
-  constructor({ random = Math.random, matchFoundSecs = MATCH_FOUND_SECS } = {}) {
+  // `onEvent({ type, client?, room? })` reports lobby activity (queue, match, create, join) for the
+  // connection log. It only observes; nothing it does changes the game.
+  constructor({ random = Math.random, matchFoundSecs = MATCH_FOUND_SECS, onEvent = () => {} } = {}) {
     this.rooms = new Map();
     this.random = random;
     this.matchFoundSecs = matchFoundSecs;
+    this.onEvent = onEvent;
     // Matchmaking: one FIFO queue, no skill rating. Whoever queues while someone is waiting is
     // paired with them at once, so at most one client is ever waiting.
     this.waiting = null;
@@ -66,11 +69,13 @@ export class RoomManager {
     if (!other) {
       this.waiting = client;
       client.send({ t: MSG.QUEUED });
+      this.onEvent({ type: 'queue', client });
       return;
     }
     this.waiting = null;
     const room = this.openRoom(other, other.cls); // longest waiter hosts (slot 0)
     this.seat(room, client, cls);
+    this.onEvent({ type: 'match', room });
     room.startIn = Math.round(this.matchFoundSecs * TICK_RATE); // counted down by tick()
     if (room.startIn <= 0) return this.start(room);
     room.clients.forEach((c, i) => c.send({ t: MSG.FOUND, secs: this.matchFoundSecs, you: i, classes: room.classes }));
@@ -84,9 +89,9 @@ export class RoomManager {
     }
   }
 
-  // A client connection. Returns handlers the transport calls.
-  connect(send) {
-    const client = { send, room: null, slot: -1, cls: null };
+  // A client connection. Returns handlers the transport calls. `id` only labels it in the log.
+  connect(send, id = null) {
+    const client = { id, send, room: null, slot: -1, cls: null };
     return {
       message: (msg) => this.onMessage(client, msg),
       close: () => this.leave(client),
@@ -98,7 +103,9 @@ export class RoomManager {
     switch (msg.t) {
       case MSG.CREATE: {
         if (client.room || this.waiting === client || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad create' });
-        client.send({ t: MSG.CREATED, code: this.openRoom(client, msg.cls).code });
+        const room = this.openRoom(client, msg.cls);
+        client.send({ t: MSG.CREATED, code: room.code });
+        this.onEvent({ type: 'create', room });
         return;
       }
       case MSG.QUEUE: {
@@ -113,6 +120,7 @@ export class RoomManager {
         if (!room) return client.send({ t: MSG.ERROR, msg: 'Room not found' });
         if (room.clients[1]) return client.send({ t: MSG.ERROR, msg: 'Room is full' });
         this.seat(room, client, msg.cls);
+        this.onEvent({ type: 'join', room });
         this.start(room);
         return;
       }

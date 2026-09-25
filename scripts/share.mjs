@@ -15,7 +15,7 @@ if (!bin) {
   process.exit(1);
 }
 
-const { server } = createServer();
+const { server } = createServer({ log: console.log });
 server.on('error', (err) => {
   console.error(err.code === 'EADDRINUSE' ? `Port ${port} is busy. Stop the other server or use: npm run share -- --port 8081` : err.message);
   process.exit(1);
