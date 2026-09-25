@@ -615,3 +615,12 @@ test('sanitizeChat: one trimmed line, no control or bidi characters, capped leng
   assert.equal(Array.from(sanitizeChat('🙂'.repeat(500))).length, CHAT_MAX, 'counted by code point');
   assert.equal(sanitizeChat(' \u0007 '), '');
 });
+
+test('ping: answered at once with the same id, in or out of a room; bad ids are ignored', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms);
+  a.message({ t: 'ping', id: 7 });
+  assert.deepEqual(a.last('pong'), { t: 'pong', id: 7 }, 'no room needed and no tick needed');
+  for (const id of ['7', 1.5, null, undefined, { x: 1 }]) a.message({ t: 'ping', id });
+  assert.equal(a.inbox.filter((m) => m.t === 'pong').length, 1);
+});

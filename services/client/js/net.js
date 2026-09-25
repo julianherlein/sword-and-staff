@@ -3,12 +3,42 @@
 import { MSG } from '/contracts/protocol.js';
 
 const INTERP_DELAY = 50; // ms behind the newest snapshot, smooths 30Hz updates
+const PING_EVERY = 1000; // ms. One message per second: under 2% of the 60 inputs/s a match sends.
+const PING_KEEP = 5; // ping shown = median of the last few round trips, so one spike does not jump
 
 export class NetClient {
   constructor(handlers) {
     this.h = handlers; // {created, queued, found, start, error, left, events, snap?, chat?}
     this.buffer = []; // [{at, s}]
     this.ws = null;
+    this.ping = null; // ms round trip, null until measured
+    this.rtts = [];
+    this.pingTimer = null;
+    this.pingSent = new Map(); // id -> performance.now() when sent
+    this.pingId = 0;
+  }
+
+  // Measures the round trip once a second while a match is on (from "match found" on). Idempotent.
+  startPing() {
+    if (this.pingTimer) return;
+    const tick = () => {
+      const id = ++this.pingId;
+      this.pingSent.set(id, performance.now());
+      for (const k of this.pingSent.keys()) if (k < id - PING_KEEP) this.pingSent.delete(k); // lost or very late
+      this.send({ t: MSG.PING, id });
+    };
+    tick();
+    this.pingTimer = setInterval(tick, PING_EVERY);
+  }
+
+  onPong(id) {
+    const sent = this.pingSent.get(id);
+    if (sent === undefined) return;
+    this.pingSent.delete(id);
+    this.rtts.push(performance.now() - sent);
+    if (this.rtts.length > PING_KEEP) this.rtts.shift();
+    const sorted = [...this.rtts].sort((a, b) => a - b);
+    this.ping = sorted[sorted.length >> 1];
   }
 
   connect() {
@@ -31,8 +61,9 @@ export class NetClient {
     switch (m.t) {
       case MSG.CREATED: this.h.created(m.code); break;
       case MSG.QUEUED: this.h.queued(); break;
-      case MSG.FOUND: this.h.found(m); break;
-      case MSG.START: this.buffer = []; this.h.start(m); break;
+      case MSG.FOUND: this.startPing(); this.h.found(m); break;
+      case MSG.START: this.startPing(); this.buffer = []; this.h.start(m); break;
+      case MSG.PONG: this.onPong(m.id); break;
       case MSG.ERROR: this.h.error(m.msg); break;
       case MSG.LEFT: this.h.left('Opponent left the match'); break;
       case MSG.CHAT: if (this.h.chat) this.h.chat(m); break;
@@ -70,6 +101,8 @@ export class NetClient {
   }
 
   close() {
+    clearInterval(this.pingTimer);
+    this.pingTimer = null;
     if (this.ws) { this.ws.onclose = null; this.ws.close(); }
     this.ws = null;
   }
