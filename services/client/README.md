@@ -10,6 +10,7 @@ Browser client. Vanilla ES modules plus three.js through an import map, with no 
 | `js/render/vfx.js` | GPU particles, projectile and telegraph views, lightning, meteor, pooled lights, floating text |
 | `js/hud.js` | player frames, ability bars with cooldown sweeps, overhead bars, banners, SVG icons |
 | `js/input.js` | keyboard+mouse, second keyboard player, gamepad, all mapped to contract inputs |
+| `js/touch.js` | phones/tablets (`pointer: coarse`): floating joystick, 6 ability buttons (tap = aim at enemy, drag = aim, drag back = cancel), aim reticle; feeds the same contract input through `KeyboardMouse` |
 | `js/audio.js` | synthesized WebAudio sound effects |
 | `js/net.js` | WebSocket client with snapshot interpolation (used for the opponent) |
 
