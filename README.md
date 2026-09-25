@@ -44,7 +44,7 @@ folder, or you can set `CLOUDFLARED=<path>`.
 
 ```bash
 npx wrangler login   # once
-npm run deploy       # https://game.<your-subdomain>.workers.dev
+npm run deploy       # https://sword-and-staff.<your-subdomain>.workers.dev
 ```
 
 The same game server runs as a Cloudflare Worker plus one Durable Object, on the free plan. The

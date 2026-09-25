@@ -1,5 +1,5 @@
 "$schema" = "../../node_modules/wrangler/config-schema.json"
-name = "game"
+name = "sword-and-staff"
 main = "src/worker.js"
 # Pins runtime behavior. >= 2026-04-07 so the runtime answers WebSocket close frames itself.
 compatibility_date = "2026-09-01"

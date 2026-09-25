@@ -28,15 +28,15 @@ browser ──wss /ws─► Cloudflare ──► Worker (src/worker.js) ──�
 ```bash
 npx wrangler login     # once per machine
 npm run dev:edge       # the Cloudflare version locally on real workerd: http://127.0.0.1:8787
-npm run deploy         # upload: https://game.<your-subdomain>.workers.dev
+npm run deploy         # upload: https://sword-and-staff.<your-subdomain>.workers.dev
 npm run logs:edge      # live connection log from the deployed server (+ connect, - disconnect, matches)
-npm run eval:edge -- https://game.<your-subdomain>.workers.dev
+npm run eval:edge -- https://sword-and-staff.<your-subdomain>.workers.dev
 ```
 
 The address is `<name>.<your-subdomain>.workers.dev`, where `<name>` is `name` in `wrangler.toml`.
 Renaming deploys a new Worker (with a fresh, empty game server) and leaves the old one running;
 delete it with `npx wrangler delete --name <old-name>`. This one was `iron-and-arcane` until the
-rename to `game`.
+rename to `sword-and-staff`.
 
 Use the npm scripts, not bare `wrangler`: the `[build]` step runs `npm run build:edge`, and wrangler
 starts builds from different directories depending on how it is launched.
