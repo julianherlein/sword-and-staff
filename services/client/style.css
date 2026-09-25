@@ -206,3 +206,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #chat.open input { display: block; }
 #chat.open .chat-line.faded { opacity: 1; }
 #chat.open .chat-log { background: rgba(10, 8, 12, 0.35); border-radius: 8px; }
+
+/* FPS and ping, right-aligned under the top-right player frame */
+#perf { position: absolute; right: 0; top: calc(100% + 6px); display: flex; gap: 10px; font: 600 11px var(--ui); color: rgba(255, 255, 255, 0.55); text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+#perf .good { color: #6dffa0; }
+#perf .ok { color: #ffd36a; }
+#perf .bad { color: #ff6a4a; }

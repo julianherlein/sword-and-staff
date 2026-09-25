@@ -452,11 +452,29 @@ document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', ()
 
 // ------------------------------------------------------------------ loop
 
+// FPS (and ping, online) under the top-right frame. Averaged over half a second, so it is readable.
+const perf = { el: $('#perf'), frames: 0, since: performance.now(), fps: 0 };
+function updatePerf(now) {
+  perf.frames++;
+  if (now - perf.since < 500) return;
+  perf.fps = Math.round((perf.frames * 1000) / (now - perf.since));
+  perf.frames = 0;
+  perf.since = now;
+  const parts = [`<span>${perf.fps} FPS</span>`];
+  if (session instanceof OnlineSession) {
+    const ping = session.net.ping;
+    const grade = ping === null ? '' : ping < 80 ? 'good' : ping < 150 ? 'ok' : 'bad';
+    parts.push(`<span class="${grade}">${ping === null ? '--' : Math.round(ping)} ms</span>`);
+  }
+  perf.el.innerHTML = parts.join('');
+}
+
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  updatePerf(now);
   const frameOut = session && session.update(dt);
   if (frameOut) {
     const { view, prev, alpha } = frameOut;

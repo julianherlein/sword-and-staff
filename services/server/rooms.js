@@ -147,6 +147,11 @@ export class RoomManager {
         if (room.rematch[0] && room.rematch[1]) this.start(room);
         return;
       }
+      case MSG.PING: {
+        // Answered straight away, outside the tick, so the round trip measures only the network.
+        if (Number.isInteger(msg.id)) client.send({ t: MSG.PONG, id: msg.id });
+        return;
+      }
       case MSG.CHAT: {
         // Only between the two players of a room: from "match found" through the end screen.
         const room = client.room;
