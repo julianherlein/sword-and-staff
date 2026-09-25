@@ -66,6 +66,9 @@ export function createServer({ lagMs = 0, matchFoundSecs, log = null } = {}) {
       try { msg = JSON.parse(data.toString()); } catch { return; }
       delay(() => conn.message(msg));
     });
+    // Without a listener, 'error' is fatal in Node: one frame over maxPayload (or any protocol
+    // violation) used to crash the whole server. ws closes the socket itself; 'close' cleans up.
+    ws.on('error', () => {});
     ws.on('close', () => {
       presence.disconnect(id);
       delay(conn.close); // same delay as messages, so a lagged join cannot outlive its socket

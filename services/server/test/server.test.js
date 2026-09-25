@@ -534,3 +534,29 @@ test('a late packet repeats movement and aim, but never re-presses buttons', () 
   assert.equal(room.state.players[0].stats.casts, casts0 + 1, 'no phantom second dash');
   assert.deepEqual(room.inputs[0], { mx: 1, my: 0, ax: 9, ay: 0, b: 0 });
 });
+
+test('an oversized or malformed frame closes that socket and never crashes the server', async () => {
+  // Regression: 'error' from ws had no listener, so one 1MB frame killed the process (npm start,
+  // npm run share) for everybody.
+  const { server } = createServer();
+  await new Promise((r) => server.listen(0, r));
+  const url = `ws://127.0.0.1:${server.address().port}/ws`;
+  const open = () => new Promise((r) => { const ws = new WebSocket(url); ws.on('open', () => r(ws)); ws.on('error', () => {}); });
+  try {
+    const big = await open();
+    const closed = new Promise((r) => big.on('close', r));
+    big.send(Buffer.alloc(1024 * 1024));
+    assert.equal(await closed, 1009);
+    const bad = await open();
+    const closedBad = new Promise((r) => bad.on('close', r));
+    bad._socket.write(Buffer.from([0x8f, 0x00])); // reserved opcode: a protocol violation
+    assert.equal(await closedBad, 1002);
+    const ok = await open();
+    const reply = new Promise((r) => ok.once('message', (d) => r(JSON.parse(d))));
+    ok.send(JSON.stringify({ t: 'join', code: 'ZZZZ', cls: 'mage' }));
+    assert.deepEqual(await reply, { t: 'error', msg: 'Room not found' }, 'still serving');
+    ok.terminate();
+  } finally {
+    server.close();
+  }
+});
