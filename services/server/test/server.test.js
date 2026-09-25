@@ -2,9 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import WebSocket from 'ws';
-import { RoomManager } from '../rooms.js';
+import { RoomManager, MATCH_FOUND_SECS } from '../rooms.js';
+import { TICK_RATE } from '../../sim/constants.js';
 import { createServer, resolvePublic } from '../index.js';
 import { BUTTON_BIT } from '../../../contracts/protocol.js';
+
+const FOUND_TICKS = MATCH_FOUND_SECS * TICK_RATE;
+const ticks = (rooms, n) => { for (let i = 0; i < n; i++) rooms.tick(); };
 
 function fakeClient(rooms) {
   const inbox = [];
@@ -36,6 +40,158 @@ test('join errors: unknown room, full room, bad class', () => {
   b.message({ t: 'join', code, cls: 'mage' });
   c.message({ t: 'join', code, cls: 'mage' });
   assert.equal(c.last('error').msg, 'Room is full');
+});
+
+test('matchmaking: first player waits, second is paired, both see match found, then start 5s later', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  assert.ok(a.last('queued'));
+  assert.equal(a.last('found'), undefined);
+  assert.equal(rooms.rooms.size, 0, 'no room until a pair exists');
+  b.message({ t: 'queue', cls: 'warrior' });
+  assert.equal(b.last('queued'), undefined, 'second player never waits');
+  for (const [c, you] of [[a, 0], [b, 1]]) {
+    assert.deepEqual(c.last('found'), { t: 'found', secs: 5, you, classes: ['mage', 'warrior'] });
+    assert.equal(c.last('start'), undefined, 'no start during the countdown');
+  }
+  ticks(rooms, FOUND_TICKS - 1);
+  assert.equal(a.last('start'), undefined, 'still counting at 4.98s');
+  assert.equal(a.last('snap'), undefined, 'no sim runs during the countdown');
+  rooms.tick();
+  assert.equal(a.last('start').you, 0, 'longest waiter gets slot 0');
+  assert.equal(b.last('start').you, 1);
+  assert.deepEqual(a.last('start').classes, ['mage', 'warrior']);
+  assert.equal(a.last('start').seed, b.last('start').seed);
+  assert.equal(rooms.waiting, null);
+  assert.equal(rooms.rooms.size, 1);
+});
+
+test('matchmaking: queue is FIFO across several pairs', () => {
+  const rooms = new RoomManager();
+  const [a, b, c, d, e] = Array.from({ length: 5 }, () => fakeClient(rooms));
+  for (const x of [a, b, c, d, e]) x.message({ t: 'queue', cls: 'warrior' });
+  ticks(rooms, FOUND_TICKS);
+  assert.equal(a.last('start').you, 0); assert.equal(b.last('start').you, 1);
+  assert.equal(c.last('start').you, 0); assert.equal(d.last('start').you, 1);
+  assert.equal(e.last('start'), undefined, 'odd one out keeps waiting');
+  assert.ok(e.last('queued'));
+  assert.equal(rooms.rooms.size, 2);
+  // Paired players are in different rooms: inputs from one pair never reach the other.
+  for (let i = 0; i < 200; i++) rooms.tick();
+  const x0 = c.last('snap').s.players[0].x;
+  a.message({ t: 'input', s: 1, i: { mx: 1, my: 0, ax: 0, ay: 0, b: 0 } });
+  for (let i = 0; i < 10; i++) rooms.tick();
+  assert.equal(c.last('snap').s.players[0].x, x0);
+});
+
+test('matchmaking: leaving the queue removes you, so nobody is paired with a ghost', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  a.close();
+  assert.equal(rooms.waiting, null);
+  b.message({ t: 'queue', cls: 'mage' });
+  assert.ok(b.last('queued'));
+  assert.equal(a.last('start'), undefined);
+  assert.equal(b.last('start'), undefined);
+});
+
+test('matchmaking: rejects bad class, double queue, and queueing while in a room', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms), h = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'paladin' });
+  assert.equal(a.last('error').msg, 'bad queue');
+  assert.equal(rooms.waiting, null);
+  a.message({ t: 'queue', cls: 'mage' });
+  a.message({ t: 'queue', cls: 'mage' });
+  assert.equal(a.inbox.filter((m) => m.t === 'error').length, 2, 'cannot match yourself');
+  assert.equal(a.last('start'), undefined);
+  // A queued player cannot also host or join; a host cannot also queue.
+  a.message({ t: 'create', cls: 'mage' });
+  assert.equal(a.last('error').msg, 'bad create');
+  h.message({ t: 'create', cls: 'warrior' });
+  a.message({ t: 'join', code: h.last('created').code, cls: 'mage' });
+  assert.equal(a.last('error').msg, 'bad join');
+  h.message({ t: 'queue', cls: 'warrior' });
+  assert.equal(h.last('error').msg, 'bad queue');
+  assert.ok(rooms.waiting, 'rejections did not knock the waiter out of the queue');
+  b.message({ t: 'queue', cls: 'warrior' });
+  assert.equal(a.last('found').you, 0);
+  // Paired but not started yet: still cannot host, join, or queue again.
+  a.message({ t: 'queue', cls: 'mage' });
+  assert.equal(a.last('error').msg, 'bad queue');
+  b.message({ t: 'create', cls: 'mage' });
+  assert.equal(b.last('error').msg, 'bad create');
+});
+
+test('matchmaking and host-by-code work side by side', () => {
+  const rooms = new RoomManager();
+  const q1 = fakeClient(rooms), host = fakeClient(rooms), guest = fakeClient(rooms), q2 = fakeClient(rooms);
+  q1.message({ t: 'queue', cls: 'mage' });
+  host.message({ t: 'create', cls: 'warrior' });
+  guest.message({ t: 'join', code: host.last('created').code, cls: 'mage' });
+  assert.equal(guest.last('start').you, 1);
+  assert.equal(q1.last('start'), undefined, 'a private room never pulls from the queue');
+  q2.message({ t: 'queue', cls: 'warrior' });
+  assert.deepEqual(q2.last('found').classes, ['mage', 'warrior']);
+  assert.equal(guest.last('found'), undefined, 'host-by-code starts at once, no match-found screen');
+  assert.equal(rooms.rooms.size, 2);
+});
+
+test('matchmaking: opponent leaving mid-match notifies and frees the room', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  b.message({ t: 'queue', cls: 'warrior' });
+  ticks(rooms, FOUND_TICKS);
+  b.close();
+  assert.ok(a.last('left'));
+  assert.equal(rooms.rooms.size, 0);
+  const c = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' }); // back in line after the opponent left
+  c.message({ t: 'queue', cls: 'mage' });
+  assert.equal(c.last('found').you, 1);
+});
+
+test('matchmaking: opponent dropping during match found puts you back in the queue', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms), c = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  b.message({ t: 'queue', cls: 'warrior' });
+  ticks(rooms, FOUND_TICKS / 2);
+  b.close();
+  assert.equal(a.last('left'), undefined, 'not kicked to the menu');
+  assert.equal(a.inbox.filter((m) => m.t === 'queued').length, 2, 'told it is searching again');
+  assert.equal(rooms.rooms.size, 0);
+  ticks(rooms, FOUND_TICKS);
+  assert.equal(a.last('start'), undefined, 'the abandoned countdown never fires');
+  c.message({ t: 'queue', cls: 'warrior' });
+  assert.equal(a.last('found').you, 0);
+  ticks(rooms, FOUND_TICKS);
+  assert.deepEqual(c.last('start').classes, ['mage', 'warrior'], 'fresh full countdown, then start');
+});
+
+test('matchmaking: the partner of a dropped player is paired at once if someone else is waiting', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms), c = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  b.message({ t: 'queue', cls: 'warrior' });
+  c.message({ t: 'queue', cls: 'mage' }); // waiting while a and b count down
+  a.close();
+  assert.equal(b.last('found').you, 1, 'b joins the waiting c, c hosts');
+  assert.equal(c.last('found').you, 0);
+  ticks(rooms, FOUND_TICKS);
+  assert.deepEqual(b.last('start').classes, ['mage', 'warrior']);
+});
+
+test('matchmaking: matchFoundSecs 0 starts immediately', () => {
+  const rooms = new RoomManager({ matchFoundSecs: 0 });
+  const a = fakeClient(rooms), b = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  b.message({ t: 'queue', cls: 'mage' });
+  assert.equal(a.last('found'), undefined);
+  assert.equal(b.last('start').you, 1);
 });
 
 test('server applies client inputs and streams snapshots with events', () => {
@@ -129,6 +285,53 @@ test('end to end over a real WebSocket', async () => {
     const { code } = await waitFor(a.inbox, 'created');
     b.ws.send(JSON.stringify({ t: 'join', code, cls: 'mage' }));
     await waitFor(b.inbox, 'start');
+    const snap = await waitFor(b.inbox, 'snap');
+    assert.equal(snap.s.players.length, 2);
+  } finally {
+    for (const ws of sockets) ws.terminate();
+    server.close();
+  }
+});
+
+test('matchmaking end to end over real WebSockets', async () => {
+  const { server } = createServer({ matchFoundSecs: 0.3 });
+  await new Promise((r) => server.listen(0, r));
+  const url = `ws://127.0.0.1:${server.address().port}/ws`;
+  const open = () => new Promise((res, rej) => {
+    const ws = new WebSocket(url);
+    const inbox = [];
+    ws.on('message', (d) => inbox.push(JSON.parse(d.toString())));
+    ws.on('open', () => res({ ws, inbox }));
+    ws.on('error', rej);
+  });
+  const waitFor = async (inbox, t) => {
+    for (let i = 0; i < 200; i++) {
+      const m = inbox.find((x) => x.t === t);
+      if (m) return m;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error(`timeout waiting for ${t}`);
+  };
+  const sockets = [];
+  try {
+    // A quitter queues and disconnects first; the next two must be paired with each other.
+    const quitter = await open();
+    sockets.push(quitter.ws);
+    quitter.ws.send(JSON.stringify({ t: 'queue', cls: 'mage' }));
+    await waitFor(quitter.inbox, 'queued');
+    quitter.ws.close();
+    await new Promise((r) => quitter.ws.on('close', r));
+    const a = await open(), b = await open();
+    sockets.push(a.ws, b.ws);
+    a.ws.send(JSON.stringify({ t: 'queue', cls: 'warrior' }));
+    await waitFor(a.inbox, 'queued');
+    b.ws.send(JSON.stringify({ t: 'queue', cls: 'mage' }));
+    const [fa, fb] = await Promise.all([waitFor(a.inbox, 'found'), waitFor(b.inbox, 'found')]);
+    assert.deepEqual([fa.you, fb.you, fa.secs], [0, 1, 0.3]);
+    assert.equal(a.inbox.find((m) => m.t === 'start'), undefined, 'start waits for the countdown');
+    const [sa, sb] = await Promise.all([waitFor(a.inbox, 'start'), waitFor(b.inbox, 'start')]);
+    assert.deepEqual([sa.you, sb.you], [0, 1]);
+    assert.deepEqual(sb.classes, ['warrior', 'mage']);
     const snap = await waitFor(b.inbox, 'snap');
     assert.equal(snap.s.players.length, 2);
   } finally {

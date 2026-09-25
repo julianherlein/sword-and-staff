@@ -3,6 +3,7 @@
 // clients only send inputs, so nobody can teleport or edit their HP.
 import { createMatch, step, snapshot } from '../sim/index.js';
 import { emptyInput, sanitizeInput, isRoomCode, MSG, CLASS_IDS } from '../../contracts/protocol.js';
+import { TICK_RATE } from '../sim/constants.js';
 
 const SNAPSHOT_EVERY = 2; // 60Hz sim, 30Hz snapshots
 // Inputs are queued and applied one per tick, in order, so the server replays exactly what the
@@ -15,6 +16,8 @@ export const MAX_INPUT_QUEUE = 6;
 export const QUEUE_TARGET = 3;
 const DRAIN_WINDOW = 30; // ticks (0.5s)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// A queue pairing is announced ("match found") this long before the match starts.
+export const MATCH_FOUND_SECS = 5;
 
 function dropOldest(q) {
   const dropped = q.shift();
@@ -31,9 +34,46 @@ function resetInputs(room) {
 }
 
 export class RoomManager {
-  constructor({ random = Math.random } = {}) {
+  constructor({ random = Math.random, matchFoundSecs = MATCH_FOUND_SECS } = {}) {
     this.rooms = new Map();
     this.random = random;
+    this.matchFoundSecs = matchFoundSecs;
+    // Matchmaking: one FIFO queue, no skill rating. Whoever queues while someone is waiting is
+    // paired with them at once, so at most one client is ever waiting.
+    this.waiting = null;
+  }
+
+  openRoom(host, cls) {
+    const room = { code: this.newCode(), clients: [host, null], classes: [cls, null], state: null, pending: [], rematch: [false, false], startIn: 0 };
+    resetInputs(room);
+    host.room = room;
+    host.slot = 0;
+    this.rooms.set(room.code, room);
+    return room;
+  }
+
+  seat(room, client, cls) {
+    room.clients[1] = client;
+    room.classes[1] = cls;
+    client.room = room;
+    client.slot = 1;
+  }
+
+  // Matchmaking entry: pair with the waiting client, or become the waiting client.
+  enqueue(client, cls) {
+    client.cls = cls;
+    const other = this.waiting;
+    if (!other) {
+      this.waiting = client;
+      client.send({ t: MSG.QUEUED });
+      return;
+    }
+    this.waiting = null;
+    const room = this.openRoom(other, other.cls); // longest waiter hosts (slot 0)
+    this.seat(room, client, cls);
+    room.startIn = Math.round(this.matchFoundSecs * TICK_RATE); // counted down by tick()
+    if (room.startIn <= 0) return this.start(room);
+    room.clients.forEach((c, i) => c.send({ t: MSG.FOUND, secs: this.matchFoundSecs, you: i, classes: room.classes }));
   }
 
   newCode() {
@@ -46,7 +86,7 @@ export class RoomManager {
 
   // A client connection. Returns handlers the transport calls.
   connect(send) {
-    const client = { send, room: null, slot: -1 };
+    const client = { send, room: null, slot: -1, cls: null };
     return {
       message: (msg) => this.onMessage(client, msg),
       close: () => this.leave(client),
@@ -57,26 +97,22 @@ export class RoomManager {
     if (!msg || typeof msg !== 'object') return;
     switch (msg.t) {
       case MSG.CREATE: {
-        if (client.room || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad create' });
-        const code = this.newCode();
-        const room = { code, clients: [client, null], classes: [msg.cls, null], state: null, pending: [], rematch: [false, false] };
-        resetInputs(room);
-        client.room = room;
-        client.slot = 0;
-        this.rooms.set(code, room);
-        client.send({ t: MSG.CREATED, code });
+        if (client.room || this.waiting === client || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad create' });
+        client.send({ t: MSG.CREATED, code: this.openRoom(client, msg.cls).code });
+        return;
+      }
+      case MSG.QUEUE: {
+        if (client.room || this.waiting === client || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad queue' });
+        this.enqueue(client, msg.cls);
         return;
       }
       case MSG.JOIN: {
         const code = typeof msg.code === 'string' ? msg.code.toUpperCase() : '';
         const room = isRoomCode(code) ? this.rooms.get(code) : null;
-        if (client.room || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad join' });
+        if (client.room || this.waiting === client || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad join' });
         if (!room) return client.send({ t: MSG.ERROR, msg: 'Room not found' });
         if (room.clients[1]) return client.send({ t: MSG.ERROR, msg: 'Room is full' });
-        room.clients[1] = client;
-        room.classes[1] = msg.cls;
-        client.room = room;
-        client.slot = 1;
+        this.seat(room, client, msg.cls);
         this.start(room);
         return;
       }
@@ -104,6 +140,7 @@ export class RoomManager {
   }
 
   start(room) {
+    room.startIn = 0;
     const seed = Math.floor(this.random() * 1e9);
     room.state = createMatch({ classes: room.classes, seed });
     resetInputs(room);
@@ -113,11 +150,16 @@ export class RoomManager {
   }
 
   leave(client) {
+    if (this.waiting === client) this.waiting = null;
     const room = client.room;
     if (!room) return;
     this.rooms.delete(room.code);
+    const found = room.startIn > 0; // left during "match found": the other player goes back in line
     for (const c of room.clients) {
-      if (c && c !== client) { c.send({ t: MSG.LEFT }); c.room = null; }
+      if (!c || c === client) continue;
+      c.room = null;
+      if (found) this.enqueue(c, c.cls);
+      else c.send({ t: MSG.LEFT });
     }
     client.room = null;
   }
@@ -125,6 +167,7 @@ export class RoomManager {
   // Advance every running room by one sim tick.
   tick() {
     for (const room of this.rooms.values()) {
+      if (room.startIn > 0 && --room.startIn === 0) this.start(room);
       if (!room.state) continue;
       for (let i = 0; i < 2; i++) {
         const q = room.queues[i];

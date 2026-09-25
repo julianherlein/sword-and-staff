@@ -21,7 +21,7 @@ Modes:
 |---|---|
 | **vs CPU** | Duel a bot: easy, normal or hard. The bot plays with the same inputs and cooldowns as you. |
 | **Local** | Two players on one screen. P1 uses keyboard + mouse, P2 uses a gamepad or the right side of the keyboard. |
-| **Online** | One player hosts and gets a 4-letter room code, the other joins. The server runs the match, so clients cannot cheat. For play over a LAN, use the address `npm start` prints under "on your network". |
+| **Online** | **Find match** puts you in a queue and pairs you with the next player who searches (one queue, first come first served, no skill rating). Both see "Match found" and a 5 to 1 countdown, then the duel starts. To play a specific friend, one player hosts and gets a 4-letter room code, the other joins with it. The server runs the match, so clients cannot cheat. For play over a LAN, use the address `npm start` prints under "on your network". |
 
 First to 3 rounds wins.
 
@@ -33,7 +33,7 @@ npm run share        # game server + Cloudflare quick tunnel
 
 The command prints `READY` and a public `https://<random>.trycloudflare.com` link once the link
 actually answers (usually 10-40s). Send that link to your friend. You both open it, pick
-**Online**, one hosts and the other joins with the room code. It needs no account and no router
+**Online**, then both press **Find match**, or one hosts and the other joins with the room code. It needs no account and no router
 setup, and the link stays up until you press Ctrl+C. You get a new link every run.
 
 It needs `cloudflared` installed (`winget install --id Cloudflare.cloudflared` on Windows,

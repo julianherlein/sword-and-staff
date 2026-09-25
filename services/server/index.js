@@ -33,8 +33,9 @@ export function resolvePublic(urlPath) {
 }
 
 // `lagMs` (dev only): simulated round-trip latency added to every WebSocket message, half each way.
-export function createServer({ lagMs = 0 } = {}) {
-  const rooms = new RoomManager();
+// `matchFoundSecs`: countdown between a queue pairing and the match start (tests shorten it).
+export function createServer({ lagMs = 0, matchFoundSecs } = {}) {
+  const rooms = new RoomManager({ matchFoundSecs });
   const server = http.createServer(async (req, res) => {
     const file = resolvePublic(req.url);
     if (!file) { res.writeHead(404).end('not found'); return; }

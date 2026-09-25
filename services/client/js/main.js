@@ -332,13 +332,14 @@ function renderSetup() {
     setup.innerHTML = `
       <div class="pickers">${picker('p1', 0, 'You', 'WASD + mouse')}</div>
       <div class="online-box" id="online-box">
+        <button class="go" id="find">Find match</button>
+        <span class="hint">or play a friend</span>
         <button class="btn" id="host">Host match</button>
-        <span class="hint">or</span>
         <input id="code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
         <button class="btn" id="join">Join</button>
       </div>
-      <p class="note">Both players open <b>${location.host}</b> (the machine running <kbd>npm start</kbd>, use its LAN address for friends).
-      The host shares the 4-letter room code.</p>`;
+      <p class="note"><b>Find match</b> pairs you with the next player who searches on <b>${location.host}</b>.
+      To play a friend, one of you hosts and shares the 4-letter room code (friends on your network use the LAN address printed by <kbd>npm start</kbd>).</p>`;
   }
 
   setup.querySelectorAll('.picker').forEach((pk) => {
@@ -357,6 +358,7 @@ function renderSetup() {
   if (go) go.addEventListener('click', () => startLocal(mode));
   const host = $('#host');
   if (host) {
+    $('#find').addEventListener('click', () => onlineConnect((n) => n.send({ t: MSG.QUEUE, cls: settings.p1 })));
     host.addEventListener('click', () => onlineConnect((n) => n.send({ t: MSG.CREATE, cls: settings.p1 })));
     $('#join').addEventListener('click', () => {
       const code = $('#code').value.trim().toUpperCase();
@@ -367,18 +369,53 @@ function renderSetup() {
   }
 }
 
+// Waiting screen inside the online box. Cancel closes the socket, which also frees the room / queue slot.
+let searchTimer = null;
+function showWaiting(html) {
+  $('#online-box').innerHTML = `${html}<button class="btn" id="cancel">Cancel</button>`;
+  $('#cancel').addEventListener('click', () => { stopSearchTimer(); net.close(); net = null; renderSetup(); });
+}
+function stopSearchTimer() { clearInterval(searchTimer); searchTimer = null; }
+
 async function onlineConnect(then) {
   unlockAudio();
+  stopSearchTimer();
   if (net) net.close();
   net = new NetClient({
-    created: (code) => {
-      $('#online-box').innerHTML = `<span class="hint">Room code</span><span class="code">${code}</span><span class="hint">Waiting for an opponent...</span><button class="btn" id="cancel">Cancel</button>`;
-      $('#cancel').addEventListener('click', () => { net.close(); net = null; renderSetup(); });
+    created: (code) => showWaiting(`<span class="hint">Room code</span><span class="code">${code}</span><span class="hint">Waiting for an opponent...</span>`),
+    queued: () => { // also sent again when a found opponent dropped before the start
+      stopSearchTimer();
+      const since = performance.now();
+      showWaiting('<span class="spinner"></span><span class="hint">Searching for an opponent <b id="search-time">0:00</b></span>');
+      searchTimer = setInterval(() => {
+        const el = $('#search-time');
+        if (!el) return stopSearchTimer();
+        const sec = Math.floor((performance.now() - since) / 1000);
+        el.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+      }, 250);
     },
-    start: (m) => startOnline(net, m),
+    // Queue paired us: the server starts the match `secs` later. Count down 5..1 locally; it never
+    // shows 0, since the real start is the server's 'start' message (which may arrive a bit late).
+    found: (m) => {
+      stopSearchTimer();
+      const opp = CLASSES[m.classes[1 - m.you]].name;
+      $('#online-box').innerHTML = `<div class="found"><span class="found-title">Match found</span><span class="hint">vs ${opp}</span><span class="found-count" id="found-count"></span></div>`;
+      const end = performance.now() + m.secs * 1000;
+      let shown = 0;
+      const update = () => {
+        const el = $('#found-count');
+        if (!el) return stopSearchTimer();
+        const n = Math.max(1, Math.ceil((end - performance.now()) / 1000));
+        if (n !== shown) { shown = n; el.textContent = n; play('beep'); }
+      };
+      update();
+      searchTimer = setInterval(update, 50);
+    },
+    start: (m) => { stopSearchTimer(); startOnline(net, m); },
     error: (msg) => toast(msg),
     left: (msg) => {
-      if (session instanceof OnlineSession) { toast(msg); toMenu(); }
+      if (session instanceof OnlineSession) { toast(msg); toMenu(); return; }
+      if ($('#cancel')) { stopSearchTimer(); net = null; toast(msg); renderSetup(); } // dropped while waiting
     },
     snap: (m) => { if (session instanceof OnlineSession) session.onSnapshot(m); },
     events: (evs, snap) => { if (session instanceof OnlineSession) dispatch(session.filterEvents(evs, snap), snap.players, session); },
