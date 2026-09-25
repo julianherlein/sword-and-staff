@@ -11,6 +11,7 @@ export const VIEW_HEIGHT = 19; // world units visible vertically
 // Camera direction: yawed 45 degrees (classic isometric), pitched ~40 degrees down.
 const CAM_DIR = new THREE.Vector3(1, 1.2, 1).normalize();
 const CAM_DIST = 60;
+export const MSAA_SAMPLES = 4;
 
 // Screen axes expressed in sim coordinates (used for WASD and gamepad movement).
 export const SCREEN_RIGHT = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
@@ -189,13 +190,57 @@ export function glowTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
+const MOON_POS = new THREE.Vector3(-14, 30, 8);
+
+// Image-based lighting, so metals have something to reflect. A tiny night scene baked into a
+// PMREM env map. RoomEnvironment is a bright studio and would wash out the night arena.
+//
+// Everything bright sits on the horizon, on purpose. The env map also lights every rough
+// surface diffusely, weighted by the cosine to the surface normal. The floor faces straight up,
+// so horizon sources barely reach it, while armor, blades and staffs are mostly vertical and
+// reflect them fully. A moon disc overhead measured +24% frame luminance (it double-counts the
+// directional moon light); the horizon layout below measured about +5%.
+function nightEnvironment(renderer) {
+  const env = new THREE.Scene();
+  const sky = new THREE.Color(0x151a2c), horizon = new THREE.Color(0x060508), lava = new THREE.Color(0x3a1004);
+  const domeGeo = new THREE.SphereGeometry(10, 32, 16);
+  const pos = domeGeo.attributes.position, colors = [], c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const t = pos.getY(i) / 10; // -1 (below) .. 1 (zenith)
+    if (t >= 0) c.copy(horizon).lerp(sky, Math.pow(t, 0.6));
+    else c.copy(horizon).lerp(lava, Math.pow(-t, 0.8));
+    colors.push(c.r, c.g, c.b);
+  }
+  domeGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  env.add(new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
+
+  // HDR panels (values above 1 survive: PMREM renders into half-float targets).
+  const panel = (w, h, hex, scale, azimuth, y) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(scale), side: THREE.DoubleSide }));
+    m.position.set(Math.cos(azimuth) * 9, y, Math.sin(azimuth) * 9);
+    m.lookAt(0, y, 0);
+    env.add(m);
+  };
+  for (let i = 0; i < 6; i++) panel(1.4, 0.9, 0xff9a4a, 8, (i / 6) * Math.PI * 2 + 0.3, 0.6); // torchlight
+  panel(9, 0.7, 0x9fb4ff, 4.8, Math.atan2(MOON_POS.z, MOON_POS.x), 3); // cool moonlit rim, moon side
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const target = pmrem.fromScene(env, 0.04);
+  pmrem.dispose();
+  env.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+  return target.texture;
+}
+
 export function toWorld(x, y, h = 0) {
   return new THREE.Vector3(x, h, y);
 }
 
 export class World {
   constructor(canvas) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // No canvas MSAA: every frame goes through the composer, whose targets carry the MSAA below.
+    // The canvas only ever receives the OutputPass full-screen quad.
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -205,13 +250,18 @@ export class World {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07060b);
     this.scene.fog = new THREE.Fog(0x0d0810, 55, 110);
+    this.scene.environment = nightEnvironment(this.renderer);
 
     this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 200);
     this.camTarget = new THREE.Vector3(0, 0, 0);
     this.shake = 0;
     this.time = 0;
 
-    this.composer = new EffectComposer(this.renderer);
+    // 4x MSAA on the composer's targets. Without it the scene renders aliased no matter what
+    // the canvas asks for. Half float matches the composer default so bloom keeps its HDR range.
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: MSAA_SAMPLES });
+    this.composer = new EffectComposer(this.renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.75, 0.55, 0.82);
     this.composer.addPass(this.bloom);
@@ -230,7 +280,7 @@ export class World {
   buildLights() {
     this.scene.add(new THREE.HemisphereLight(0x8d98c8, 0x3a1c14, 1.35));
     const moon = new THREE.DirectionalLight(0xc4d0ff, 2.8);
-    moon.position.set(-14, 30, 8);
+    moon.position.copy(MOON_POS);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     const s = moon.shadow.camera;

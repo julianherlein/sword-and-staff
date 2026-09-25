@@ -5,7 +5,7 @@ sword against spells) played at **Battlerite's** pace: free movement, mouse-aime
 telegraphed ground spells you land by predicting where the enemy will be, short cooldowns,
 a health orb in the middle and a ring of fire that closes in.
 
-Three.js renders it in 3D (orthographic isometric camera, shadows, bloom, GPU particles, dynamic
+Three.js renders it in 3D (orthographic isometric camera, shadows, image-based lighting, MSAA, bloom, GPU particles, dynamic
 lights). All sounds are synthesized in the browser, so there are no asset files.
 
 ## Play
