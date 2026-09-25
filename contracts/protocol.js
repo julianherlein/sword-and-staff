@@ -1,7 +1,7 @@
 // Shared contract between client, server, sim and bot.
 // Every producer of player input goes through sanitizeInput before it reaches the sim.
 
-export const PROTOCOL_VERSION = 2; // 2: input sequence numbers + acks for client-side prediction
+export const PROTOCOL_VERSION = 3; // 2: input seq + acks for prediction; 3: matchmaking queue
 
 // Bit positions of the held-button mask `b`.
 export const BUTTONS = ['primary', 'secondary', 'dash', 'q', 'e', 'r'];
@@ -41,15 +41,19 @@ export function held(input, key) {
 }
 
 // Network messages (JSON over WebSocket).
-// client -> server: {t:'create', cls} | {t:'join', code, cls} | {t:'input', s:seq, i:Input} | {t:'rematch'}
+// client -> server: {t:'create', cls} | {t:'join', code, cls} | {t:'queue', cls} | {t:'input', s:seq, i:Input} | {t:'rematch'}
+//   queue: matchmaking. Pairs with whoever is already waiting (FIFO, no skill rating), else waits.
+//   Leaving the queue or cancelling a hosted room = closing the socket.
 //   seq: increasing integer per client; the server applies inputs one per tick in seq order.
-// server -> client: {t:'created', code} | {t:'start', you, classes, seed}
+// server -> client: {t:'created', code} | {t:'queued'} | {t:'start', you, classes, seed}
+//                   {t:'found', secs, you, classes}: queue paired you; 'start' follows in `secs` seconds.
+//                     If the opponent drops before that, you are put back in the queue ({t:'queued'} again).
 //                   {t:'snap', s:Snapshot, ev:Event[], ack:[seq0, seq1], q:[depth0, depth1]}
 //   ack = last seq applied per slot; q = inputs still queued per slot (clients pace sending by it)
 //                   {t:'error', msg} | {t:'left'}
 export const MSG = Object.freeze({
-  CREATE: 'create', JOIN: 'join', INPUT: 'input', REMATCH: 'rematch',
-  CREATED: 'created', START: 'start', SNAP: 'snap', ERROR: 'error', LEFT: 'left',
+  CREATE: 'create', JOIN: 'join', QUEUE: 'queue', INPUT: 'input', REMATCH: 'rematch',
+  CREATED: 'created', QUEUED: 'queued', FOUND: 'found', START: 'start', SNAP: 'snap', ERROR: 'error', LEFT: 'left',
 });
 
 export const CLASS_IDS = ['warrior', 'mage'];

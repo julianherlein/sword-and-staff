@@ -74,6 +74,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .online-box input { font: 600 20px var(--ui); letter-spacing: .3em; width: 130px; text-transform: uppercase; text-align: center; padding: 8px; border-radius: 8px; border: 1px solid var(--panel-edge); background: rgba(0, 0, 0, 0.4); color: var(--ink); }
 .online-box .code { font: 800 30px var(--ui); letter-spacing: .3em; color: var(--gold); }
 .online-box .hint { color: var(--muted); font-size: 13px; }
+.online-box .hint b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--panel-edge); border-top-color: var(--gold); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.found { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 220px; }
+.found-title { font: 800 24px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+.found-count { font: 800 48px var(--display); line-height: 1.1; color: var(--ink); }
 .btn { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 8px; padding: 9px 16px; }
 .btn:hover { border-color: var(--gold); }
 .note { color: var(--muted); font-size: 12px; text-align: center; max-width: 640px; line-height: 1.5; }
