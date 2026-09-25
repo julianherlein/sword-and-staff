@@ -95,7 +95,10 @@ per-IP limits is real. Under `wrangler dev` nothing overwrites it and a local cl
   (`lobby-sam`): changing it and redeploying starts a new object in the new place. Values: `wnam`
   `enam` `sam` `weur` `eeur` `apac` `apac-ne` `apac-se` `oc` `afr` `me`, or remove it to place the
   object near whoever connects first. Hints are best effort: Cloudflare picks the data center
-  closest to the region that can host Durable Objects.
+  closest to the region that can host Durable Objects, and only about 11% of its sites can.
+  **From Argentina the nearest one is Miami** (where.durableobjects.live, 2026-09-25: a Worker in
+  Buenos Aires creates its objects in MIA), so `sam` did not move anything: measured the same
+  ~170ms round trip with and without it. No setting fixes that; it is where the hardware is.
 - **Latency** is player to nearest Cloudflare site to the object. Every input pays it before the
   server applies it; your own character hides it through prediction, the opponent does not.
   Across continents the far player pays the distance, as with any single authoritative server.
@@ -123,8 +126,12 @@ per-IP limits is real. Under `wrangler dev` nothing overwrites it and a local cl
   Measured locally on 2026-09-24 (Windows, under attack): workerd 59.99 ticks/s, snapshots p50
   33.1ms p95 46.7ms max 56.9ms. Before the frame limits, the binary attack alone dropped the sim to
   57 ticks/s with a 557ms snapshot gap. Node server baseline: 59.98 ticks/s, p95 46.9ms.
-  Deployed, from Argentina (edge EZE, 2026-09-25, no region hint yet): 8/8 pass, 59.97 ticks/s,
-  snapshots p50 32.6ms p95 37.8ms max 128.2ms, input -> ack p50 203ms p95 244ms. The edge is about
-  23ms away, so the rest is the trip to the object; that is what `LOBBY_REGION = "sam"` targets.
+  Deployed, from Argentina (edge EZE, 2026-09-25): 8/8 pass, 59.97 ticks/s, snapshots p50 32.6ms
+  p95 37.8ms, input -> ack p50 203ms without a hint and 202ms with `LOBBY_REGION = "sam"`.
+  Split: player to edge Worker ~33ms round trip, player to Durable Object ~170ms (a `create` ->
+  `created` message pair). The ~135ms difference is Buenos Aires to Miami; see "Where it runs".
+  For players in South America, `npm run share` (the tunnel to a PC in the same country) should be
+  the lower-latency option: its path is player to Buenos Aires edge to the host PC, no Miami. Not
+  measured yet; `npm run eval:edge -- <trycloudflare link>` would settle it.
 - `test/lobby.test.js`: region to object name and hint, a region change reaches a new object, a
   typo fails loudly.

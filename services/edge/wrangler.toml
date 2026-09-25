@@ -22,8 +22,9 @@ class_name = "GameServer"
 tag = "v1"
 new_sqlite_classes = ["GameServer"]
 
-# Where the game server runs. Players far from it pay the distance on every input (measured from
-# Argentina: 203ms input->ack with no hint; a ~180ms round trip, so most likely North America). Set this to the
-# region most players are in. Changing it starts a fresh object there (objects never move).
+# Where the game server runs: a best-effort hint, see README "Where it runs". Changing it starts a
+# fresh object (objects never move). Measured from Argentina, "sam" changes nothing: no South
+# American Cloudflare site hosts Durable Objects, so both with and without it the object is in
+# Miami, ~170ms round trip. The hint matters for players in regions that do have hosting sites.
 [vars]
 LOBBY_REGION = "sam"
