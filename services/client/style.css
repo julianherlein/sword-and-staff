@@ -252,3 +252,30 @@ body.touch-play #hud-hint { display: none; }
   .t-buttons { transform: scale(.82); transform-origin: bottom right; }
   .t-top { top: 64px; }
 }
+
+/* ------------------------------------------------------------------ phones and tablets */
+/* Touch devices only (the primary pointer is a finger): desktop keeps the sizes above. Phone
+   screens are ~390 CSS px tall in landscape, so menus, panels and the HUD are scaled down with
+   `zoom` (which also shrinks their layout box, unlike transform). Elements positioned per frame in
+   screen pixels (overhead bars, floating numbers, the aim reticle) are not zoomed; they get
+   smaller sizes instead. The touch buttons keep their size. */
+@media (pointer: coarse) {
+  #menu { gap: 10px; padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left)); }
+  #menu > * { zoom: 0.62; }
+  #menu .controls { display: none; } /* keyboard and mouse help; touch players get the joystick */
+  .overlay .panel { zoom: 0.7; }
+  #hud-top { top: max(6px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); zoom: 0.62; }
+  #banner { zoom: 0.6; }
+  #chat { zoom: 0.8; }
+  #toast { zoom: 0.85; }
+  .t-top { top: 50px; }
+  .overhead { width: 52px; margin-left: -26px; }
+  .overhead > div { height: 4px; }
+  .overhead .omp, .overhead .ocast { height: 3px; }
+  .floater { font-size: 14px; }
+  .floater.big { font-size: 20px; }
+  .floater.status { font-size: 10px; }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  #menu > * { zoom: 0.8; }
+}
