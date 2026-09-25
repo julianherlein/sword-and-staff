@@ -3,6 +3,7 @@
 // what no asset matched: `/ws`, which it hands to the one GameServer Durable Object, and 404s.
 import { DurableObject } from 'cloudflare:workers';
 import { createHub } from './hub.js';
+import { lobbyFor } from './lobby.js';
 
 const isUpgrade = (request) => (request.headers.get('Upgrade') || '').toLowerCase() === 'websocket';
 
@@ -12,7 +13,8 @@ export default {
     if (url.pathname !== '/ws') return new Response('not found', { status: 404 });
     if (!isUpgrade(request)) return new Response('expected a WebSocket upgrade', { status: 426 });
     // One object for everybody: the matchmaking queue and room codes need a single global view.
-    return env.GAME.get(env.GAME.idFromName('lobby')).fetch(request);
+    const lobby = lobbyFor(env);
+    return env.GAME.get(env.GAME.idFromName(lobby.name), lobby.options).fetch(request);
   },
 };
 

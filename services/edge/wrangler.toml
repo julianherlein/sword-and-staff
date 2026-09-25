@@ -21,3 +21,9 @@ class_name = "GameServer"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameServer"]
+
+# Where the game server runs. Players far from it pay the distance on every input (measured from
+# Argentina: 203ms input->ack with no hint; a ~180ms round trip, so most likely North America). Set this to the
+# region most players are in. Changing it starts a fresh object there (objects never move).
+[vars]
+LOBBY_REGION = "sam"

@@ -87,12 +87,18 @@ per-IP limits is real. Under `wrangler dev` nothing overwrites it and a local cl
 
 ## Limits to know
 
-- **One object, one location.** It is created near whoever first connects after an eviction, and
-  every match runs there on one CPU thread. Fine for friends and dozens of matches; a public game
-  would split into a lobby object plus one object per room, placed near its players.
-- **Latency** is player to nearest Cloudflare site to the object. Same region: usually better than
-  a home PC behind a tunnel. Across continents, the far player pays the distance, as with any single
-  authoritative server.
+- **One object, one location.** Every match runs in it, on one CPU thread. Fine for friends and
+  dozens of matches; a public game would split into a lobby object plus one object per room,
+  placed near its players.
+- **Where it runs: `LOBBY_REGION` in `wrangler.toml`** (default `sam`, South America). An object
+  is placed when it is first created and never moves, so the region is part of its name
+  (`lobby-sam`): changing it and redeploying starts a new object in the new place. Values: `wnam`
+  `enam` `sam` `weur` `eeur` `apac` `apac-ne` `apac-se` `oc` `afr` `me`, or remove it to place the
+  object near whoever connects first. Hints are best effort: Cloudflare picks the data center
+  closest to the region that can host Durable Objects.
+- **Latency** is player to nearest Cloudflare site to the object. Every input pays it before the
+  server applies it; your own character hides it through prediction, the opponent does not.
+  Across continents the far player pays the distance, as with any single authoritative server.
 - **An open socket keeps the object awake**, even an idle one in the menu (as on the Node server).
   Duration is billed for that time, but one object can stay awake all day within the free 28 hours.
 - **No `--lag`** option here; use `npm start -- --lag 150` locally.
@@ -117,4 +123,8 @@ per-IP limits is real. Under `wrangler dev` nothing overwrites it and a local cl
   Measured locally on 2026-09-24 (Windows, under attack): workerd 59.99 ticks/s, snapshots p50
   33.1ms p95 46.7ms max 56.9ms. Before the frame limits, the binary attack alone dropped the sim to
   57 ticks/s with a 557ms snapshot gap. Node server baseline: 59.98 ticks/s, p95 46.9ms.
-  Not yet measured on the deployed object.
+  Deployed, from Argentina (edge EZE, 2026-09-25, no region hint yet): 8/8 pass, 59.97 ticks/s,
+  snapshots p50 32.6ms p95 37.8ms max 128.2ms, input -> ack p50 203ms p95 244ms. The edge is about
+  23ms away, so the rest is the trip to the object; that is what `LOBBY_REGION = "sam"` targets.
+- `test/lobby.test.js`: region to object name and hint, a region change reaches a new object, a
+  typo fails loudly.
