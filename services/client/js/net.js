@@ -6,7 +6,7 @@ const INTERP_DELAY = 50; // ms behind the newest snapshot, smooths 30Hz updates
 
 export class NetClient {
   constructor(handlers) {
-    this.h = handlers; // {created, queued, found, start, error, left, events}
+    this.h = handlers; // {created, queued, found, start, error, left, events, snap?, chat?}
     this.buffer = []; // [{at, s}]
     this.ws = null;
   }
@@ -35,6 +35,7 @@ export class NetClient {
       case MSG.START: this.buffer = []; this.h.start(m); break;
       case MSG.ERROR: this.h.error(m.msg); break;
       case MSG.LEFT: this.h.left('Opponent left the match'); break;
+      case MSG.CHAT: if (this.h.chat) this.h.chat(m); break;
       case MSG.SNAP:
         this.buffer.push({ at: performance.now(), s: m.s });
         if (this.h.snap) this.h.snap(m);

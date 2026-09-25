@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import WebSocket from 'ws';
-import { RoomManager, MATCH_FOUND_SECS } from '../rooms.js';
+import { RoomManager, MATCH_FOUND_SECS, CHAT_RATE } from '../rooms.js';
 import { TICK_RATE } from '../../sim/constants.js';
 import { createServer, resolvePublic } from '../index.js';
-import { BUTTON_BIT } from '../../../contracts/protocol.js';
+import { BUTTON_BIT, CHAT_MAX, sanitizeChat } from '../../../contracts/protocol.js';
 
 const FOUND_TICKS = MATCH_FOUND_SECS * TICK_RATE;
 const ticks = (rooms, n) => { for (let i = 0; i < n; i++) rooms.tick(); };
@@ -559,4 +559,59 @@ test('an oversized or malformed frame closes that socket and never crashes the s
   } finally {
     server.close();
   }
+});
+
+test('chat: a line reaches both players of the room, tagged with the sender slot', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms), outsider = fakeClient(rooms);
+  a.message({ t: 'create', cls: 'mage' });
+  a.message({ t: 'chat', text: 'anyone?' });
+  assert.equal(a.last('chat'), undefined, 'no chat while alone in a room');
+  b.message({ t: 'join', code: a.last('created').code, cls: 'warrior' });
+  b.message({ t: 'chat', text: '  gl hf  ' });
+  assert.deepEqual(a.last('chat'), { t: 'chat', from: 1, text: 'gl hf' });
+  assert.deepEqual(b.last('chat'), { t: 'chat', from: 1, text: 'gl hf' }, 'echoed to the sender');
+  outsider.message({ t: 'chat', text: 'hi' });
+  assert.equal(a.inbox.filter((m) => m.t === 'chat').length, 1, 'clients outside the room cannot talk to it');
+  for (const text of ['', '   ', 42, null, { x: 1 }]) b.message({ t: 'chat', text });
+  assert.equal(a.inbox.filter((m) => m.t === 'chat').length, 1, 'blank or non-string lines are dropped');
+});
+
+test('chat: works from the match-found countdown on, not while queued', () => {
+  const rooms = new RoomManager();
+  const a = fakeClient(rooms), b = fakeClient(rooms);
+  a.message({ t: 'queue', cls: 'mage' });
+  a.message({ t: 'chat', text: 'waiting' });
+  assert.equal(a.last('chat'), undefined, 'nobody to talk to in the queue');
+  b.message({ t: 'queue', cls: 'warrior' });
+  a.message({ t: 'chat', text: 'hi' });
+  assert.deepEqual(b.last('chat'), { t: 'chat', from: 0, text: 'hi' });
+  b.close();
+  a.message({ t: 'chat', text: 'still there?' });
+  assert.equal(a.last('chat').text, 'hi', 'back in the queue, chat is off again');
+});
+
+test('chat: flooding is rate limited per client and recovers over time', () => {
+  let now = 0;
+  const rooms = new RoomManager({ now: () => now });
+  const a = fakeClient(rooms), b = fakeClient(rooms);
+  a.message({ t: 'create', cls: 'mage' });
+  b.message({ t: 'join', code: a.last('created').code, cls: 'warrior' });
+  for (let i = 0; i < CHAT_RATE.burst + 3; i++) a.message({ t: 'chat', text: `spam ${i}` });
+  assert.equal(b.inbox.filter((m) => m.t === 'chat').length, CHAT_RATE.burst);
+  assert.equal(a.last('error').msg, 'You are chatting too fast');
+  b.message({ t: 'chat', text: 'unaffected' });
+  assert.equal(a.last('chat').text, 'unaffected', 'the limit is per sender');
+  now += CHAT_RATE.every;
+  a.message({ t: 'chat', text: 'ok now' });
+  assert.equal(b.last('chat').text, 'ok now');
+});
+
+test('sanitizeChat: one trimmed line, no control or bidi characters, capped length', () => {
+  assert.equal(sanitizeChat('a\nb\r\n\tc'), 'a b c');
+  assert.equal(sanitizeChat('x‮evil\u0000'), 'x evil');
+  assert.equal(sanitizeChat('<b>hi</b>'), '<b>hi</b>', 'HTML is kept as text; the client never renders it');
+  assert.equal(sanitizeChat('w'.repeat(500)).length, CHAT_MAX);
+  assert.equal(Array.from(sanitizeChat('🙂'.repeat(500))).length, CHAT_MAX, 'counted by code point');
+  assert.equal(sanitizeChat(' \u0007 '), '');
 });
