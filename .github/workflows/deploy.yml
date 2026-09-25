@@ -1,0 +1,48 @@
+# Deploys the game server to Cloudflare (npm run deploy) after every push to main, i.e. every merged PR.
+# Tests gate the deploy. Needs two repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   API token from the "Edit Cloudflare Workers" template
+#   CLOUDFLARE_ACCOUNT_ID  your account ID (Workers & Pages overview, right sidebar)
+# A deploy restarts the Durable Object, so matches in progress end.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # manual re-deploy from the Actions tab
+
+# One deploy at a time; a newer merge waits for the running deploy instead of racing it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Same command as a manual deploy: the pinned wrangler runs the [build] step, then uploads.
+      - run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

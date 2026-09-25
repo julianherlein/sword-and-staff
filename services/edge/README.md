@@ -36,6 +36,19 @@ npm run eval:edge -- https://iron-and-arcane.<your-subdomain>.workers.dev
 Use the npm scripts, not bare `wrangler`: the `[build]` step runs `npm run build:edge`, and wrangler
 starts builds from different directories depending on how it is launched.
 
+### Automatic deploys
+
+`.github/workflows/deploy.yml` runs the tests and then `npm run deploy` on every push to `main`
+(every merged PR), and on demand from the Actions tab. It needs two repository secrets under
+Settings > Secrets and variables > Actions:
+
+- `CLOUDFLARE_API_TOKEN`: create one at dash.cloudflare.com > My Profile > API Tokens with the
+  "Edit Cloudflare Workers" template.
+- `CLOUDFLARE_ACCOUNT_ID`: shown on the Workers & Pages overview page.
+
+The deploy job uses the `production` GitHub environment, so you can add required reviewers there to
+approve each deploy. A deploy restarts the game server, so matches in progress end.
+
 `npm start` and `npm run share` are unchanged: the Node server is still the local and LAN option,
 and `npm run share` has no quota.
 
