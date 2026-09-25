@@ -10,6 +10,13 @@ compatibility_date = "2026-09-01"
 command = "npm run --silent build:edge"
 watch_dir = ["../client", "../sim", "../ai", "../../contracts"] # relative to this file
 
+# Workers Logs: keep the connection log (console.log from the game server) so it can be searched in
+# the dashboard (Worker > Logs) after the fact, not only live through `npm run logs:edge`.
+# head_sampling_rate 1 = keep every line; the log is a few lines per player, far below the daily cap.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [assets]
 directory = "dist"
 

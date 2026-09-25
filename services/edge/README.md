@@ -41,6 +41,15 @@ rename to `sword-and-staff`.
 Use the npm scripts, not bare `wrangler`: the `[build]` step runs `npm run build:edge`, and wrangler
 starts builds from different directories depending on how it is launched.
 
+### Logs
+
+`npm run logs:edge` streams the connection log live (who connects, queues, gets matched, leaves).
+Workers Logs (`[observability]` in `wrangler.toml`) also stores it, so past lines can be searched
+in the Cloudflare dashboard: Workers & Pages > sword-and-staff > Logs. The free plan stores a
+capped number of log lines per day and keeps them for a few days; this game writes a handful of
+lines per player, so it stays far below the cap. Stored lines include each player's IP address and
+browser, as the live log does. Chat messages are never logged.
+
 ### Automatic deploys
 
 `.github/workflows/deploy.yml` runs the tests and then `npm run deploy` on every push to `main`
