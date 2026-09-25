@@ -1,0 +1,23 @@
+"$schema" = "../../node_modules/wrangler/config-schema.json"
+name = "iron-and-arcane"
+main = "src/worker.js"
+# Pins runtime behavior. >= 2026-04-07 so the runtime answers WebSocket close frames itself.
+compatibility_date = "2026-09-01"
+
+# Copies the client, sim, ai, contracts and three.js into dist/ before every dev and deploy.
+# Through npm, which finds the repo root from any directory (wrangler runs builds from different cwds).
+[build]
+command = "npm run --silent build:edge"
+watch_dir = ["../client", "../sim", "../ai", "../../contracts"] # relative to this file
+
+[assets]
+directory = "dist"
+
+[[durable_objects.bindings]]
+name = "GAME"
+class_name = "GameServer"
+
+# The free plan only allows SQLite-backed Durable Objects. Nothing is stored; this only picks the kind.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameServer"]

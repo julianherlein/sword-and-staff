@@ -9,7 +9,12 @@
     "share": "node scripts/share.mjs",
     "test": "node --test \"services/**/test/*.test.js\" \"scripts/test/*.test.js\"",
     "eval": "node evals/balance.mjs",
-    "eval:net": "node evals/netcode.mjs"
+    "eval:net": "node evals/netcode.mjs",
+    "build:edge": "node services/edge/build.mjs",
+    "dev:edge": "wrangler dev -c services/edge/wrangler.toml",
+    "deploy": "wrangler deploy -c services/edge/wrangler.toml",
+    "logs:edge": "wrangler tail -c services/edge/wrangler.toml",
+    "eval:edge": "node evals/edge.mjs"
   },
   "license": "ISC",
   "engines": {
@@ -18,5 +23,8 @@
   "dependencies": {
     "three": "^0.186.1",
     "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.139.0"
   }
 }

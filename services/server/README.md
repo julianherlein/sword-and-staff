@@ -48,4 +48,8 @@ Behind the `npm run share` tunnel every socket comes from localhost, so the IP i
 `CF-Connecting-IP` (or `X-Forwarded-For`), and only when the peer is loopback. Anyone else sending
 those headers is logged under their real address. `createServer()` is silent unless given `log`.
 
+`PUBLIC` and `resolvePublic` are exported: `services/edge/build.mjs` uses them so Cloudflare serves
+exactly the same files. `rooms.js`, `presence.js` and `ticker.js` also run inside the edge Durable Object,
+so keep them free of Node APIs.
+
 Tests: `node --test "services/server/test/*.test.js"` (includes a real WebSocket round trip).

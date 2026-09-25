@@ -14,7 +14,7 @@ import { TICK_RATE } from '../sim/constants.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 // Only these trees are reachable over HTTP. Everything else (evals, .git, .env) is not served.
-const PUBLIC = ['services/client/', 'services/sim/', 'services/ai/', 'contracts/', 'node_modules/three/build/', 'node_modules/three/examples/jsm/'];
+export const PUBLIC = ['services/client/', 'services/sim/', 'services/ai/', 'contracts/', 'node_modules/three/build/', 'node_modules/three/examples/jsm/'];
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',

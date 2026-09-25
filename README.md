@@ -40,6 +40,19 @@ It needs `cloudflared` installed (`winget install --id Cloudflare.cloudflared` o
 `brew install cloudflared` on macOS). The script finds it on PATH or in its default install
 folder, or you can set `CLOUDFLARED=<path>`.
 
+### Hosting on Cloudflare (always on, your PC can be off)
+
+```bash
+npx wrangler login   # once
+npm run deploy       # https://iron-and-arcane.<your-subdomain>.workers.dev
+```
+
+The same game server runs as a Cloudflare Worker plus one Durable Object, on the free plan. The
+link is permanent and works without your PC. The free plan's daily message quota comes to roughly
+4.6 hours of online matches per day (resets at midnight UTC); vs CPU and Local modes cost nothing,
+because the page and its files are served free. `npm run logs:edge` streams the live connection
+log. Details, limits and costs: [`services/edge/README.md`](services/edge/README.md).
+
 Online, your own character is predicted locally, so movement, facing, casts and cooldowns respond
 on the next frame at any ping. The opponent is shown slightly in the past, smoothed between server
 updates. To feel a laggy connection on your own machine: `npm start -- --lag 150`.
@@ -94,9 +107,11 @@ contracts/protocol.js     input format, button bits, network messages (shared by
 services/sim/             deterministic simulation: rules, classes, combat. No DOM, no Node APIs
 services/ai/              CPU opponent: sim state in, contract input out
 services/server/          static file server + authoritative WebSocket rooms (/ws)
+services/edge/            the same rooms on Cloudflare: Worker + one Durable Object (npm run deploy)
 services/client/          Three.js renderer, VFX, HUD, input, audio, net client
 evals/balance.mjs         bot-vs-bot balance and pace eval
 evals/netcode.mjs         client-side prediction accuracy under simulated latency
+evals/edge.mjs            a real two-client match against a running server: clock, snapshots, matchmaking
 scripts/share.mjs         npm run share: server + Cloudflare tunnel for internet play
 ```
 
@@ -125,10 +140,11 @@ Each service has its own README and `test/` folder.
 ## Tests and evals
 
 ```bash
-npm test             # gate tests: sim, prediction, bot, server, share script (node:test, ~2s)
+npm test             # gate tests: sim, prediction, bot, server, share script, edge on real workerd (node:test, ~8s)
 npm run eval         # balance eval: 200 headless bot matches, fails on thresholds (~10s)
 npm run eval -- 200  # more matches per pairing
 npm run eval:net     # netcode eval: prediction through simulated 20/150/250ms links + stalls (~8s)
+npm run eval:edge -- <url>  # live server eval: a real 20s match over WebSockets (default: npm run dev:edge)
 ```
 
 The eval checks the numbers that define the game:

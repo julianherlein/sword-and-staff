@@ -4,3 +4,6 @@ evals/results/
 *.log
 .playwright-mcp/
 .claude/
+
+services/edge/dist/
+.wrangler/
