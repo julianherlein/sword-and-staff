@@ -10,6 +10,7 @@ import { Hud, ICONS, CLASS_ICONS, abilityTooltip, KEY_LABELS } from './hud.js';
 import { KeyboardMouse, KeyboardP2, Gamepad, keys } from './input.js';
 import { soundForEvent, unlockAudio, toggleMute, play } from './audio.js';
 import { NetClient } from './net.js';
+import { Chat } from './chat.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#game');
@@ -18,6 +19,8 @@ const vfx = new Vfx(world, $('#floaters'));
 const hud = new Hud($('#hud'), world);
 // One mouse/keyboard reader for the whole app (listeners are attached once).
 const kbm = new KeyboardMouse(canvas, world);
+// Online chat; lines go through whichever connection is current.
+const chat = new Chat($('#chat'), (text) => { if (net) net.send({ t: MSG.CHAT, text }); });
 
 // ------------------------------------------------------------------ settings
 
@@ -220,12 +223,16 @@ function startOnline(net, start) {
   session.mode = 'online';
   session.onMatchEnd = (w) => showEnd(w);
   hud.setup({ classes: start.classes, names: session.names, bars: [{ slot: start.you, labels: KEY_LABELS.kbm, side: 'center' }] });
+  $('#hud-hint').textContent = 'Enter chat · ESC pause · M mute';
+  chat.show(session.names);
   $('#menu').classList.add('hidden');
   $('#end').classList.add('hidden');
 }
 
 function toMenu() {
   if (session && session.destroy) session.destroy();
+  chat.hide();
+  $('#hud-hint').textContent = 'ESC pause · M mute';
   $('#pause').classList.add('hidden');
   $('#end').classList.add('hidden');
   $('#menu').classList.remove('hidden');
@@ -276,6 +283,11 @@ function setPaused(on) {
 
 window.addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') return;
+  if ((e.code === 'Enter' || e.code === 'NumpadEnter') && chat.enabled) {
+    e.preventDefault();
+    chat.open();
+    return;
+  }
   if (e.code === 'Escape' && session && !session.quiet && $('#end').classList.contains('hidden')) {
     setPaused($('#pause').classList.contains('hidden'));
   }
@@ -373,7 +385,7 @@ function renderSetup() {
 let searchTimer = null;
 function showWaiting(html) {
   $('#online-box').innerHTML = `${html}<button class="btn" id="cancel">Cancel</button>`;
-  $('#cancel').addEventListener('click', () => { stopSearchTimer(); net.close(); net = null; renderSetup(); });
+  $('#cancel').addEventListener('click', () => { stopSearchTimer(); chat.hide(); net.close(); net = null; renderSetup(); });
 }
 function stopSearchTimer() { clearInterval(searchTimer); searchTimer = null; }
 
@@ -385,6 +397,7 @@ async function onlineConnect(then) {
     created: (code) => showWaiting(`<span class="hint">Room code</span><span class="code">${code}</span><span class="hint">Waiting for an opponent...</span>`),
     queued: () => { // also sent again when a found opponent dropped before the start
       stopSearchTimer();
+      chat.hide();
       const since = performance.now();
       showWaiting('<span class="spinner"></span><span class="hint">Searching for an opponent <b id="search-time">0:00</b></span>');
       searchTimer = setInterval(() => {
@@ -399,6 +412,7 @@ async function onlineConnect(then) {
     found: (m) => {
       stopSearchTimer();
       const opp = CLASSES[m.classes[1 - m.you]].name;
+      chat.show(m.you === 0 ? ['You', 'Opponent'] : ['Opponent', 'You']); // say hi during the countdown
       $('#online-box').innerHTML = `<div class="found"><span class="found-title">Match found</span><span class="hint">vs ${opp}</span><span class="found-count" id="found-count"></span></div>`;
       const end = performance.now() + m.secs * 1000;
       let shown = 0;
@@ -415,8 +429,9 @@ async function onlineConnect(then) {
     error: (msg) => toast(msg),
     left: (msg) => {
       if (session instanceof OnlineSession) { toast(msg); toMenu(); return; }
-      if ($('#cancel')) { stopSearchTimer(); net = null; toast(msg); renderSetup(); } // dropped while waiting
+      if ($('#cancel') || $('#found-count')) { stopSearchTimer(); chat.hide(); net = null; toast(msg); renderSetup(); } // dropped while waiting
     },
+    chat: (m) => chat.add(m.from, m.text),
     snap: (m) => { if (session instanceof OnlineSession) session.onSnapshot(m); },
     events: (evs, snap) => { if (session instanceof OnlineSession) dispatch(session.filterEvents(evs, snap), snap.players, session); },
   });

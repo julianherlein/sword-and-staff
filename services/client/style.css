@@ -193,3 +193,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
   #banner { font-size: 48px; }
   #banner.fight { font-size: 64px; }
 }
+
+/* ------------------------------------------------------------------ chat (online) */
+/* Above the end screen (z 30) so the players can talk rematch; below toasts. */
+#chat { position: fixed; left: 12px; bottom: 96px; width: min(340px, calc(100vw - 24px)); z-index: 40; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#chat .chat-log { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.35; user-select: text; }
+.chat-line { padding: 3px 8px; border-radius: 6px; background: rgba(10, 8, 12, 0.6); text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; transition: opacity .6s; }
+.chat-line.faded { opacity: 0; }
+#chat input { display: none; font: 13px var(--ui); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--panel-edge); background: rgba(10, 8, 12, 0.9); color: var(--ink); outline: none; }
+#chat input:focus { border-color: var(--gold); }
+#chat.open { pointer-events: auto; }
+#chat.open input { display: block; }
+#chat.open .chat-line.faded { opacity: 1; }
+#chat.open .chat-log { background: rgba(10, 8, 12, 0.35); border-radius: 8px; }

@@ -2,7 +2,7 @@
 // so tests drive it without sockets. The server runs the same sim as the browser and
 // clients only send inputs, so nobody can teleport or edit their HP.
 import { createMatch, step, snapshot } from '../sim/index.js';
-import { emptyInput, sanitizeInput, isRoomCode, MSG, CLASS_IDS } from '../../contracts/protocol.js';
+import { emptyInput, sanitizeInput, sanitizeChat, isRoomCode, MSG, CLASS_IDS } from '../../contracts/protocol.js';
 import { TICK_RATE } from '../sim/constants.js';
 
 const SNAPSHOT_EVERY = 2; // 60Hz sim, 30Hz snapshots
@@ -18,6 +18,9 @@ const DRAIN_WINDOW = 30; // ticks (0.5s)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 // A queue pairing is announced ("match found") this long before the match starts.
 export const MATCH_FOUND_SECS = 5;
+// Chat flood limit per client: a burst of CHAT_RATE.burst lines, then one every CHAT_RATE.every ms.
+// Lines over the limit are dropped and the sender is told why.
+export const CHAT_RATE = { burst: 5, every: 1000 };
 
 function dropOldest(q) {
   const dropped = q.shift();
@@ -36,8 +39,9 @@ function resetInputs(room) {
 export class RoomManager {
   // `onEvent({ type, client?, room? })` reports lobby activity (queue, match, create, join) for the
   // connection log. It only observes; nothing it does changes the game.
-  constructor({ random = Math.random, matchFoundSecs = MATCH_FOUND_SECS, onEvent = () => {} } = {}) {
+  constructor({ random = Math.random, matchFoundSecs = MATCH_FOUND_SECS, onEvent = () => {}, now = Date.now } = {}) {
     this.rooms = new Map();
+    this.now = now;
     this.random = random;
     this.matchFoundSecs = matchFoundSecs;
     this.onEvent = onEvent;
@@ -91,7 +95,7 @@ export class RoomManager {
 
   // A client connection. Returns handlers the transport calls. `id` only labels it in the log.
   connect(send, id = null) {
-    const client = { id, send, room: null, slot: -1, cls: null };
+    const client = { id, send, room: null, slot: -1, cls: null, chat: { tokens: CHAT_RATE.burst, at: this.now() } };
     return {
       message: (msg) => this.onMessage(client, msg),
       close: () => this.leave(client),
@@ -143,8 +147,29 @@ export class RoomManager {
         if (room.rematch[0] && room.rematch[1]) this.start(room);
         return;
       }
+      case MSG.CHAT: {
+        // Only between the two players of a room: from "match found" through the end screen.
+        const room = client.room;
+        if (!room || !room.clients[0] || !room.clients[1]) return;
+        const text = sanitizeChat(msg.text);
+        if (!text) return;
+        if (!this.takeChat(client)) return client.send({ t: MSG.ERROR, msg: 'You are chatting too fast' });
+        for (const c of room.clients) c.send({ t: MSG.CHAT, from: client.slot, text });
+        return;
+      }
       default:
     }
+  }
+
+  // Token bucket for chat lines (CHAT_RATE).
+  takeChat(client) {
+    const b = client.chat;
+    const t = this.now();
+    b.tokens = Math.min(CHAT_RATE.burst, b.tokens + (t - b.at) / CHAT_RATE.every);
+    b.at = t;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
   }
 
   start(room) {
