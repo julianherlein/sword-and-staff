@@ -1,5 +1,5 @@
 // Game server: serves the browser client and hosts online 1v1 rooms over WebSocket (/ws).
-// Usage: node services/server/index.js [--port 8080]   (or PORT=8080)
+// Usage: node services/server/index.js [--port 8080] [--lag 150]   (or PORT=8080)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +32,8 @@ export function resolvePublic(urlPath) {
   return abs;
 }
 
-export function createServer() {
+// `lagMs` (dev only): simulated round-trip latency added to every WebSocket message, half each way.
+export function createServer({ lagMs = 0 } = {}) {
   const rooms = new RoomManager();
   const server = http.createServer(async (req, res) => {
     const file = resolvePublic(req.url);
@@ -48,14 +49,18 @@ export function createServer() {
 
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
   wss.on('connection', (ws) => {
-    const send = (obj) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); };
+    const delay = (fn) => (lagMs > 0 ? setTimeout(fn, lagMs / 2) : fn()); // equal delays keep order
+    const send = (obj) => {
+      const data = JSON.stringify(obj);
+      delay(() => { if (ws.readyState === ws.OPEN) ws.send(data); });
+    };
     const conn = rooms.connect(send);
     ws.on('message', (data) => {
       let msg;
       try { msg = JSON.parse(data.toString()); } catch { return; }
-      conn.message(msg);
+      delay(() => conn.message(msg));
     });
-    ws.on('close', conn.close);
+    ws.on('close', () => delay(conn.close)); // same delay as messages, so a lagged join cannot outlive its socket
   });
 
   // Poll faster than the tick rate; the ticker decides how many sim ticks real time allows.
@@ -72,9 +77,12 @@ function lanAddresses() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argPort = process.argv.indexOf('--port');
   const port = Number(argPort > 0 ? process.argv[argPort + 1] : process.env.PORT) || 8080;
-  const { server } = createServer();
+  const argLag = process.argv.indexOf('--lag');
+  const lagMs = argLag > 0 ? Number(process.argv[argLag + 1]) || 0 : 0;
+  const { server } = createServer({ lagMs });
   server.listen(port, () => {
     console.log(`Arena Duel running:  http://localhost:${port}`);
+    if (lagMs) console.log(`  simulating ${lagMs}ms round-trip latency on every connection (dev)`);
     for (const ip of lanAddresses()) console.log(`  on your network:    http://${ip}:${port}`);
   });
 }

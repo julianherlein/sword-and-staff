@@ -1,4 +1,5 @@
-// Online client: sends inputs, buffers server snapshots and interpolates between them.
+// Online client: sends inputs, buffers server snapshots and interpolates between them
+// (used for the opponent; the local player is predicted, see services/sim/predict.js).
 import { MSG } from '/contracts/protocol.js';
 
 const INTERP_DELAY = 50; // ms behind the newest snapshot, smooths 30Hz updates
@@ -34,6 +35,7 @@ export class NetClient {
       case MSG.LEFT: this.h.left('Opponent left the match'); break;
       case MSG.SNAP:
         this.buffer.push({ at: performance.now(), s: m.s });
+        if (this.h.snap) this.h.snap(m);
         if (this.buffer.length > 30) this.buffer.shift();
         if (m.ev.length) this.h.events(m.ev, m.s);
         break;

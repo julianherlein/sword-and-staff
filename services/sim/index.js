@@ -367,20 +367,26 @@ function checkRoundOver(state) {
   emit(state, { type: 'roundEnd', winner, score: state.score.slice() });
 }
 
-// Compact, JSON-safe view of the state for the network and the renderer.
+export function copyPlayer(p) {
+  return {
+    ...p,
+    cd: { ...p.cd },
+    cast: p.cast && { ...p.cast },
+    dash: p.dash && { ...p.dash },
+    leap: p.leap && { ...p.leap },
+    stats: { ...p.stats },
+  };
+}
+
+// JSON-safe view of the state for the network and the renderer.
 export function snapshot(state) {
   return {
     tick: state.tick, phase: state.phase, phaseTime: state.phaseTime, fightTime: state.fightTime,
     round: state.round, score: state.score, winsNeeded: state.winsNeeded, winner: state.winner,
     roundWinner: state.roundWinner, ringRadius: state.ringRadius,
     orb: state.orb,
-    players: state.players.map((p) => ({
-      id: p.id, cls: p.cls, x: p.x, y: p.y, z: p.z, facing: p.facing, vx: p.vx, vy: p.vy,
-      hp: p.hp, maxHp: p.maxHp, mana: p.mana, maxMana: p.maxMana, alive: p.alive,
-      cd: p.cd, cast: p.cast, dash: p.dash ? { t: p.dash.t } : null, leap: p.leap,
-      stun: p.stun, root: p.root, slowT: p.slowT, parry: p.parry, berserk: p.berserk,
-      combo: p.combo, hitFlash: p.hitFlash, moving: p.moving, stats: p.stats,
-    })),
+    // Full player state: the client's predictor replays its own inputs from exactly this.
+    players: state.players.map(copyPlayer),
     projectiles: state.projectiles.map((pr) => ({ id: pr.id, owner: pr.owner, kind: pr.kind, x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, r: pr.r })),
     zones: state.zones.map((z) => ({ id: z.id, owner: z.owner, kind: z.kind, x: z.x, y: z.y, r: z.r, t: z.t, delay: z.delay })),
   };

@@ -8,7 +8,8 @@
     "start": "node services/server/index.js",
     "share": "node scripts/share.mjs",
     "test": "node --test \"services/**/test/*.test.js\" \"scripts/test/*.test.js\"",
-    "eval": "node evals/balance.mjs"
+    "eval": "node evals/balance.mjs",
+    "eval:net": "node evals/netcode.mjs"
   },
   "license": "ISC",
   "engines": {

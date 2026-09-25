@@ -11,7 +11,14 @@ Browser client. Vanilla ES modules plus three.js through an import map, with no 
 | `js/hud.js` | player frames, ability bars with cooldown sweeps, overhead bars, banners, SVG icons |
 | `js/input.js` | keyboard+mouse, second keyboard player, gamepad, all mapped to contract inputs |
 | `js/audio.js` | synthesized WebAudio sound effects |
-| `js/net.js` | WebSocket client with snapshot interpolation |
+| `js/net.js` | WebSocket client with snapshot interpolation (used for the opponent) |
+
+Online, `OnlineSession` runs `services/sim/predict.js` for the local player. A pacer (fed by the
+server's queue depth) decides when to send. Each send samples input, predicts one tick, shows
+any own cosmetic events, and sends `{s, i}`. Each snapshot reconciles, and each frame renders
+the predicted player over the interpolated view. Server events go through
+`predictor.serverEvents()`, which drops your own events that already played and shows any the
+prediction missed.
 
 Local modes run the sim in the page at a fixed 60Hz and render between ticks with interpolation.
 Big hits add hit-stop and screen shake, and the killing blow triggers slow motion. The dynamic

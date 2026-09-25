@@ -16,7 +16,8 @@ snapshot(s)                  // JSON-safe view for the network and the renderer
 | `constants.js` | arena, pillars, spawns, round timing, orb, ring of fire |
 | `classes.js` | Warrior and Mage stats and abilities. Numbers live here as `dmg`, `cost`, `cooldown`, ... |
 | `combat.js` | damage, parry, stun/root/slow, knockback, projectiles, zones, collision |
-| `index.js` | match lifecycle, per-tick update, snapshot |
+| `index.js` | match lifecycle, per-tick update, snapshot (full player state) |
+| `predict.js` | client-side prediction: replay unacked inputs through `step()`, smooth corrections |
 
 Rules worth knowing: holding a button casts as soon as it is ready; wind-ups keep tracking the
 aim point; stuns cancel casts (and spend the mana); roots block mobility abilities; parry blocks

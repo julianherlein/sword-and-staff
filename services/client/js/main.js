@@ -1,5 +1,6 @@
 // App entry: menu, sessions (vs CPU, local 2P, online, attract-mode demo), main loop.
 import { createMatch, step, CLASSES, constants as C } from '/services/sim/index.js';
+import { createPredictor, createPacer } from '/services/sim/predict.js';
 import { MSG } from '/contracts/protocol.js';
 import { createBot } from '/services/ai/bot.js';
 import { World } from './render/world.js';
@@ -115,30 +116,53 @@ class LocalSession {
 }
 
 class OnlineSession {
-  constructor(net, start) {
+  constructor(net, start, startSeq = 0) {
     this.net = net;
     this.me = start.you;
     this.classes = start.classes;
     this.names = start.you === 0 ? ['You', 'Opponent'] : ['Opponent', 'You'];
     kbm.setPad(true);
-    this.sendAcc = 0;
     this.lastView = null;
+    this.latest = null; // newest raw snapshot: the local player is predicted on top of it
+    // Your own character runs locally (replaying unacknowledged inputs through the shared sim);
+    // the opponent is interpolated from server snapshots.
+    this.predictor = createPredictor(this.me, { startSeq });
+    this.pacer = createPacer();
     ensureViews(this.classes);
     vfx.clearTransient();
+  }
+
+  onSnapshot(m) {
+    this.latest = m.s;
+    if (m.q) this.pacer.observe(m.q[this.me]);
+    const late = this.predictor.reconcile(m.s, m.ack ? m.ack[this.me] : undefined);
+    if (late.length) dispatch(late, this.renderPlayers(), this);
+  }
+
+  // Server events: our own cosmetic ones play only if the prediction did not already show them.
+  filterEvents(evs, snap) {
+    return this.predictor.serverEvents(evs);
+  }
+
+  renderPlayers() {
+    return this.latest.players.map((p, i) => (i === this.me ? this.predictor.player(p) : p));
   }
 
   update(dt) {
     const v = this.net.view();
     if (v) this.lastView = v;
-    if (!this.lastView) return null;
-    this.sendAcc += dt;
-    if (this.sendAcc >= C.DT) {
-      this.sendAcc = Math.min(this.sendAcc - C.DT, C.DT);
-      const s = this.lastView.view;
-      this.net.send({ t: MSG.INPUT, i: kbm.sample(s.players[this.me], s.players[1 - this.me]) });
+    if (!this.lastView || !this.latest) return null;
+    for (let n = this.pacer.due(dt, C.DT); n > 0; n--) {
+      const me = this.predictor.player(this.latest.players[this.me]);
+      const { msg, events } = this.predictor.input(kbm.sample(me, this.lastView.view.players[1 - this.me]));
+      this.net.send({ t: MSG.INPUT, ...msg });
+      if (events.length) dispatch(events, this.renderPlayers(), this);
     }
+    this.predictor.update(dt);
     const { view, prevProj, alpha } = this.lastView;
-    return { view, prev: prevProj ? { players: null, proj: prevProj } : null, alpha };
+    const players = view.players.slice();
+    players[this.me] = this.predictor.player(this.latest.players[this.me]);
+    return { view: { ...view, players }, prev: prevProj ? { players: null, proj: prevProj } : null, alpha };
   }
 
   destroy() { this.net.close(); }
@@ -190,7 +214,9 @@ function startLocal(mode) {
 
 function startOnline(net, start) {
   if (session && session.destroy && !(session instanceof OnlineSession)) session.destroy();
-  session = new OnlineSession(net, start);
+  // A rematch reuses the connection, so input sequence numbers must continue from the last match.
+  const startSeq = session instanceof OnlineSession && session.net === net ? session.predictor.seq : 0;
+  session = new OnlineSession(net, start, startSeq);
   session.mode = 'online';
   session.onMatchEnd = (w) => showEnd(w);
   hud.setup({ classes: start.classes, names: session.names, bars: [{ slot: start.you, labels: KEY_LABELS.kbm, side: 'center' }] });
@@ -354,7 +380,8 @@ async function onlineConnect(then) {
     left: (msg) => {
       if (session instanceof OnlineSession) { toast(msg); toMenu(); }
     },
-    events: (evs, snap) => { if (session instanceof OnlineSession) dispatch(evs, snap.players, session); },
+    snap: (m) => { if (session instanceof OnlineSession) session.onSnapshot(m); },
+    events: (evs, snap) => { if (session instanceof OnlineSession) dispatch(session.filterEvents(evs, snap), snap.players, session); },
   });
   try {
     await net.connect();

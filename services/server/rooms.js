@@ -5,7 +5,30 @@ import { createMatch, step, snapshot } from '../sim/index.js';
 import { emptyInput, sanitizeInput, isRoomCode, MSG, CLASS_IDS } from '../../contracts/protocol.js';
 
 const SNAPSHOT_EVERY = 2; // 60Hz sim, 30Hz snapshots
+// Inputs are queued and applied one per tick, in order, so the server replays exactly what the
+// client predicted. A burst beyond this depth drops the oldest inputs (their buttons carry over).
+export const MAX_INPUT_QUEUE = 6;
+// Client and server tick at the same rate, so a backlog from one late packet would never shrink on
+// its own. Clients pace their sending from the depth in each snapshot (`q`, see createPacer). As a
+// backstop for clients that do not, if the queue never dropped below QUEUE_TARGET for a whole
+// window, skip one input (its buttons carry over).
+export const QUEUE_TARGET = 3;
+const DRAIN_WINDOW = 30; // ticks (0.5s)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function dropOldest(q) {
+  const dropped = q.shift();
+  if (q.length) q[0].input.b |= dropped.input.b; // never lose a tap
+}
+
+function resetInputs(room) {
+  room.inputs = [emptyInput(), emptyInput()];
+  room.queues = [[], []];
+  room.acks = [0, 0];
+  room.minDepth = [Infinity, Infinity];
+  room.depthTicks = [0, 0];
+  room.lastSeq = room.lastSeq || [0, 0]; // sequence numbers keep counting across rematches
+}
 
 export class RoomManager {
   constructor({ random = Math.random } = {}) {
@@ -36,7 +59,8 @@ export class RoomManager {
       case MSG.CREATE: {
         if (client.room || !CLASS_IDS.includes(msg.cls)) return client.send({ t: MSG.ERROR, msg: 'bad create' });
         const code = this.newCode();
-        const room = { code, clients: [client, null], classes: [msg.cls, null], inputs: [emptyInput(), emptyInput()], state: null, pending: [], rematch: [false, false] };
+        const room = { code, clients: [client, null], classes: [msg.cls, null], state: null, pending: [], rematch: [false, false] };
+        resetInputs(room);
         client.room = room;
         client.slot = 0;
         this.rooms.set(code, room);
@@ -57,7 +81,15 @@ export class RoomManager {
         return;
       }
       case MSG.INPUT: {
-        if (client.room) client.room.inputs[client.slot] = sanitizeInput(msg.i);
+        const room = client.room;
+        if (!room) return;
+        const slot = client.slot;
+        const seq = Number.isInteger(msg.s) ? msg.s : room.lastSeq[slot] + 1;
+        if (seq <= room.lastSeq[slot]) return; // duplicate or stale
+        room.lastSeq[slot] = seq;
+        const q = room.queues[slot];
+        q.push({ seq, input: sanitizeInput(msg.i) });
+        while (q.length > MAX_INPUT_QUEUE) dropOldest(q);
         return;
       }
       case MSG.REMATCH: {
@@ -74,7 +106,7 @@ export class RoomManager {
   start(room) {
     const seed = Math.floor(this.random() * 1e9);
     room.state = createMatch({ classes: room.classes, seed });
-    room.inputs = [emptyInput(), emptyInput()];
+    resetInputs(room);
     room.rematch = [false, false];
     room.pending = [];
     room.clients.forEach((c, i) => c.send({ t: MSG.START, you: i, classes: room.classes, seed }));
@@ -94,10 +126,31 @@ export class RoomManager {
   tick() {
     for (const room of this.rooms.values()) {
       if (!room.state) continue;
+      for (let i = 0; i < 2; i++) {
+        const q = room.queues[i];
+        room.minDepth[i] = Math.min(room.minDepth[i], q.length);
+        if (++room.depthTicks[i] >= DRAIN_WINDOW) {
+          if (room.minDepth[i] > QUEUE_TARGET) dropOldest(q);
+          room.minDepth[i] = Infinity;
+          room.depthTicks[i] = 0;
+        }
+        const next = q.shift();
+        if (next) {
+          room.inputs[i] = next.input;
+          room.acks[i] = next.seq;
+        } else {
+          // Late packet: keep moving and aiming the same way, but never re-press buttons.
+          // The client did not predict this extra tick, so a repeated tap would be a phantom cast.
+          room.inputs[i] = { ...room.inputs[i], b: 0 };
+        }
+      }
       step(room.state, room.inputs);
+      // Tag each event with the input seq its player had just applied, so a predicting client can
+      // match its own events exactly, however long the network stalled.
+      for (const e of room.state.events) if (e.id === 0 || e.id === 1) e.seq = room.acks[e.id];
       room.pending.push(...room.state.events);
       if (room.state.tick % SNAPSHOT_EVERY === 0) {
-        const msg = { t: MSG.SNAP, s: snapshot(room.state), ev: room.pending };
+        const msg = { t: MSG.SNAP, s: snapshot(room.state), ev: room.pending, ack: room.acks.slice(), q: room.queues.map((q) => q.length) };
         room.pending = [];
         for (const c of room.clients) c.send(msg);
       }

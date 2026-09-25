@@ -40,8 +40,9 @@ It needs `cloudflared` installed (`winget install --id Cloudflare.cloudflared` o
 `brew install cloudflared` on macOS). The script finds it on PATH or in its default install
 folder, or you can set `CLOUDFLARED=<path>`.
 
-Online play has no client-side prediction yet, so your own movement shows up one round trip late.
-That feels fine at LAN or same-country latency and sluggish above about 120ms.
+Online, your own character is predicted locally, so movement, facing, casts and cooldowns respond
+on the next frame at any ping. The opponent is shown slightly in the past, smoothed between server
+updates. To feel a laggy connection on your own machine: `npm start -- --lag 150`.
 
 ## Controls
 
@@ -95,21 +96,39 @@ services/ai/              CPU opponent: sim state in, contract input out
 services/server/          static file server + authoritative WebSocket rooms (/ws)
 services/client/          Three.js renderer, VFX, HUD, input, audio, net client
 evals/balance.mjs         bot-vs-bot balance and pace eval
+evals/netcode.mjs         client-side prediction accuracy under simulated latency
 scripts/share.mjs         npm run share: server + Cloudflare tunnel for internet play
 ```
 
 The same `services/sim` code runs in the browser (local modes), on the server (online), in the bot
-and in the eval. Online, clients send only inputs; the server steps the sim at 60Hz and streams
-snapshots at 30Hz, which clients render 50ms behind with interpolation.
+and in the evals.
+
+Online netcode:
+
+- Clients send only numbered inputs. The server queues them, applies exactly one per tick at 60Hz,
+  and streams snapshots at 30Hz with the last input number it applied for each player (the ack)
+  and its queue depth. Clients send a few percent slower or faster to keep that queue at about
+  one input, so a network stall's backlog drains without dropping anything.
+- **Your own character is predicted** (`services/sim/predict.js`). The client rebuilds the state
+  from each snapshot and replays its unacknowledged inputs through the real `step()`. It is
+  deterministic, so without outside interference the prediction matches the server exactly.
+  When the enemy stuns or knocks you back, the client blends the correction out over about 70ms
+  so it never snaps.
+- **The opponent is interpolated**, drawn 50ms behind the newest snapshot.
+- Damage, projectiles and zones stay server-authoritative. Your own swing, cast, dash and blink
+  animations and sounds play instantly from the prediction. Each plays exactly once: the server's
+  copy confirms it by input number. If the server rejected the cast (you were stunned and could
+  not know yet), a later real cast still plays.
 
 Each service has its own README and `test/` folder.
 
 ## Tests and evals
 
 ```bash
-npm test             # gate tests: sim, bot, server, share script (node:test, ~2s)
+npm test             # gate tests: sim, prediction, bot, server, share script (node:test, ~2s)
 npm run eval         # balance eval: 200 headless bot matches, fails on thresholds (~10s)
 npm run eval -- 200  # more matches per pairing
+npm run eval:net     # netcode eval: prediction through simulated 20/150/250ms links + stalls (~8s)
 ```
 
 The eval checks the numbers that define the game:
@@ -122,7 +141,16 @@ The eval checks the numbers that define the game:
 | Hard bot beats easy bot | at least 70% of matches |
 | Matches that never finish | 0 |
 
-Results land in `evals/results/balance-latest.json` (gitignored).
+Netcode eval (10 minutes per profile, simulated in about 8s):
+
+| Profile | Checks |
+|---|---|
+| 150ms RTT, 30ms jitter | mean error under 0.10m, p95 under 0.40m, casts shown then rejected under 3% |
+| 250ms RTT, 50ms jitter | mean error under 0.20m, p95 under 0.80m, rejected under 5% |
+| all jitter profiles | own events shown twice or never: 0. Own input on screen within one tick |
+| 150ms plus TCP stalls | server queue mean under 3 ticks, events twice or never under 0.5%, mean error under 0.12m |
+
+Results land in `evals/results/*-latest.json` (gitignored).
 
 A pre-commit hook runs the gate tests. Enable it once per clone:
 

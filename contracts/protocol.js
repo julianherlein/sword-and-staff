@@ -1,7 +1,7 @@
 // Shared contract between client, server, sim and bot.
 // Every producer of player input goes through sanitizeInput before it reaches the sim.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2; // 2: input sequence numbers + acks for client-side prediction
 
 // Bit positions of the held-button mask `b`.
 export const BUTTONS = ['primary', 'secondary', 'dash', 'q', 'e', 'r'];
@@ -41,8 +41,11 @@ export function held(input, key) {
 }
 
 // Network messages (JSON over WebSocket).
-// client -> server: {t:'create', cls} | {t:'join', code, cls} | {t:'input', i:Input} | {t:'rematch'}
-// server -> client: {t:'created', code} | {t:'start', you, classes, seed} | {t:'snap', s:Snapshot, ev:Event[]}
+// client -> server: {t:'create', cls} | {t:'join', code, cls} | {t:'input', s:seq, i:Input} | {t:'rematch'}
+//   seq: increasing integer per client; the server applies inputs one per tick in seq order.
+// server -> client: {t:'created', code} | {t:'start', you, classes, seed}
+//                   {t:'snap', s:Snapshot, ev:Event[], ack:[seq0, seq1], q:[depth0, depth1]}
+//   ack = last seq applied per slot; q = inputs still queued per slot (clients pace sending by it)
 //                   {t:'error', msg} | {t:'left'}
 export const MSG = Object.freeze({
   CREATE: 'create', JOIN: 'join', INPUT: 'input', REMATCH: 'rematch',
