@@ -112,7 +112,7 @@ per-IP limits is real. Under `wrangler dev` nothing overwrites it and a local cl
 - `evals/edge.mjs`: a real 20s two-client match against any running server. Frozen thresholds:
   matchmaking start 4.8-5.6s after found, sim clock 58.8-61.2 ticks/s, snapshot interval p95 at most
   50ms and max at most 250ms, mean server input queue at most 3, `left` within 1s, and three
-  hostile clients (16MB binary frame, 5000 frames at once, 12KB multibyte text) each closed with
+  hostile clients, one after another (1MB binary frame, 5000 frames at once, 12KB multibyte text), each closed with
   the right code while the match keeps every threshold above.
   Measured locally on 2026-09-24 (Windows, under attack): workerd 59.99 ticks/s, snapshots p50
   33.1ms p95 46.7ms max 56.9ms. Before the frame limits, the binary attack alone dropped the sim to

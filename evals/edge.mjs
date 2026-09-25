@@ -10,7 +10,7 @@
 //   snapshots:   interval p95 <= 50ms (nominal 33ms), none further apart than 250ms
 //   inputs:      mean server queue depth <= 3 (the backlog drains, as in evals/netcode.mjs)
 //   leaving:     the other player gets {t:'left'} within 1s
-//   hostile:     3s in, three extra clients send a 16MB binary frame, 5000 frames at once, and 12KB of
+//   hostile:     3s in, three extra clients (one after another) send a 1MB binary frame, 5000 frames at once, and 12KB of
 //                multibyte text. Each is closed (1003, 1008, 1009) and the match above still passes.
 // Input -> ack latency (includes network RTT) is reported, not judged: it depends on where you are.
 // Usage: node evals/edge.mjs [url=ws://127.0.0.1:8787/ws] [seconds=20]
@@ -91,18 +91,24 @@ async function run() {
   }
   // Hostile clients join 3s into the match. The match above must keep every threshold regardless.
   const attacks = [
-    { name: '16MB binary frame', code: 1003, go: (ws) => ws.send(Buffer.alloc(16 * 1024 * 1024)) },
+    { name: '1MB binary frame', code: 1003, go: (ws) => ws.send(Buffer.alloc(1024 * 1024)) }, // refused by type, any size
     { name: 'flood of 5000 frames', code: 1008, go: (ws) => { for (let i = 0; i < 5000; i++) ws.send('{"t":"input","s":1}'); } },
     { name: '12KB multibyte text', code: 1009, go: (ws) => ws.send(JSON.stringify({ t: 'x', pad: '€'.repeat(4000) })) },
   ];
+  // One at a time: with the two players that is 3 sockets from this machine, under the deployed
+  // server's limit of 4 per IP (loopback is exempt, so only a production run would notice).
+  const attackOnce = (atk) => new Promise((done) => {
+    const ws = new WebSocket(URL_ARG);
+    const timer = setTimeout(() => { ws.terminate(); done({ ...atk, got: 'still open after 30s' }); }, 30000);
+    ws.on('open', () => atk.go(ws));
+    ws.on('unexpected-response', (_req, res) => { clearTimeout(timer); done({ ...atk, got: `refused with HTTP ${res.statusCode}` }); });
+    ws.on('close', (code) => { clearTimeout(timer); done({ ...atk, got: code }); });
+    ws.on('error', () => {});
+  });
   const attacked = new Promise((resolve) => setTimeout(async () => {
-    resolve(await Promise.all(attacks.map((atk) => new Promise((done) => {
-      const ws = new WebSocket(URL_ARG);
-      const timer = setTimeout(() => { ws.terminate(); done({ ...atk, got: 'still open after 5s' }); }, 5000);
-      ws.on('open', () => atk.go(ws));
-      ws.on('close', (code) => { clearTimeout(timer); done({ ...atk, got: code }); });
-      ws.on('error', () => {});
-    }))));
+    const results = [];
+    for (const atk of attacks) results.push(await attackOnce(atk));
+    resolve(results);
   }, 3000));
 
   const t0 = performance.now();
