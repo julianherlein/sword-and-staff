@@ -100,6 +100,8 @@ export class KeyboardMouse {
   }
 
   sample(me, foe) {
+    // Touch controls (touch.js), when they were used more recently than the mouse.
+    if (this.touch && this.touch.active && this.touch.lastUsed > this.lastMouseMove) return this.touch.sample(me, foe);
     const padInput = this.pad && this.pad.sample(me, foe);
     if (padInput && this.pad.lastActive > this.lastMouseMove) return padInput;
     const { mx, my } = keyMove(P1_KEYS);

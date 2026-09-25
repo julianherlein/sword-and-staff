@@ -71,6 +71,10 @@ updates. To feel a laggy connection on your own machine: `npm start -- --lag 150
 | Ultimate R | `R` | `O` | `B` |
 | Pause / mute | `Esc` / `M` | | |
 
+On phones and tablets (vs CPU and Online), a joystick appears under your left thumb and the six
+abilities sit under your right: tap to cast at the enemy, drag to aim, drag back onto the button to
+cancel. Play in landscape.
+
 Holding a button casts as soon as the ability is ready. Ground-targeted spells follow your cursor
 during their short cast time.
 

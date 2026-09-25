@@ -241,7 +241,8 @@ export class World {
     // No canvas MSAA: every frame goes through the composer, whose targets carry the MSAA below.
     // The canvas only ever receives the OutputPass full-screen quad.
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Phones have 3x screens and small GPUs: cap lower on touch devices.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.matchMedia('(pointer: coarse)').matches ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;

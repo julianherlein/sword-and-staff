@@ -212,3 +212,43 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #perf .good { color: #6dffa0; }
 #perf .ok { color: #ffd36a; }
 #perf .bad { color: #ff6a4a; }
+
+/* ------------------------------------------------------------------ touch controls (touch.js) */
+/* Below the pause/end overlays (z 30) so their buttons stay tappable; above the HUD (z 10). */
+#touch { position: fixed; inset: 0; z-index: 15; touch-action: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+body.touch-play { overscroll-behavior: none; }
+body.touch-play canvas#game { touch-action: none; }
+body.touch-play #hud-hint { display: none; }
+.t-stick { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; transition: opacity .12s; pointer-events: none; }
+.t-stick.on { opacity: 1; }
+.t-stick::before { content: ''; position: absolute; left: -64px; top: -64px; width: 128px; height: 128px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(10, 8, 12, 0.35); }
+.t-knob { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; margin: 0; border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(255, 243, 207, 0.9), rgba(217, 181, 106, 0.7)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+.t-buttons { position: absolute; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); width: 250px; height: 250px; pointer-events: none; }
+.t-btn { position: absolute; width: 62px; height: 62px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.28); background: radial-gradient(circle at 50% 35%, rgba(42, 34, 48, 0.9), rgba(13, 10, 16, 0.9)); pointer-events: auto; touch-action: none; overflow: hidden; }
+.t-btn .icon { position: absolute; inset: 9px; }
+.t-btn .icon svg { width: 100%; height: 100%; display: block; }
+.t-btn .cd { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(rgba(0, 0, 0, 0.72) var(--p, 0deg), transparent 0); }
+.t-btn .cdtext { position: absolute; inset: 0; display: grid; place-items: center; font: 800 18px var(--ui); text-shadow: 0 2px 4px #000; }
+.t-btn.nomana .icon { filter: grayscale(1) brightness(.5); }
+.t-btn.down { border-color: var(--gold); box-shadow: 0 0 14px var(--gold); }
+.t-btn.cancel { border-color: #ff6a4a; box-shadow: 0 0 14px #ff6a4a; }
+.t-primary { right: 0; bottom: 0; width: 86px; height: 86px; }
+.t-secondary { right: 100px; bottom: 2px; }
+.t-dash { right: 2px; bottom: 100px; }
+.t-q { right: 178px; bottom: 30px; }
+.t-e { right: 88px; bottom: 88px; }
+.t-r { right: 30px; bottom: 178px; }
+.t-top { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); display: flex; gap: 8px; }
+.t-top button { font: 700 12px var(--ui); padding: 6px 12px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(10, 8, 12, 0.6); color: var(--ink); }
+.t-reticle { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--gold); box-shadow: 0 0 10px var(--gold); opacity: 0; pointer-events: none; }
+.t-reticle.on { opacity: 1; }
+#rotate { display: none; }
+@media (orientation: portrait) {
+  body.touch-play #rotate { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(7, 6, 11, 0.94); text-align: center; padding: 24px; }
+  #rotate b { font-family: var(--display); font-size: 24px; color: var(--gold); }
+  #rotate span { color: var(--muted); }
+}
+@media (max-height: 480px) {
+  .t-buttons { transform: scale(.82); transform-origin: bottom right; }
+  .t-top { top: 64px; }
+}

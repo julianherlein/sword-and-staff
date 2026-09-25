@@ -11,6 +11,7 @@ import { KeyboardMouse, KeyboardP2, Gamepad, keys } from './input.js';
 import { soundForEvent, unlockAudio, toggleMute, play } from './audio.js';
 import { NetClient } from './net.js';
 import { Chat } from './chat.js';
+import { TouchControls, isTouchDevice } from './touch.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#game');
@@ -21,6 +22,12 @@ const hud = new Hud($('#hud'), world);
 const kbm = new KeyboardMouse(canvas, world);
 // Online chat; lines go through whichever connection is current.
 const chat = new Chat($('#chat'), (text) => { if (net) net.send({ t: MSG.CHAT, text }); });
+// Phones and tablets: on-screen joystick and ability buttons for the local player (vs CPU, online).
+const touch = new TouchControls($('#touch'), world, {
+  pause: () => setPaused($('#pause').classList.contains('hidden')),
+  chat: () => chat.open(),
+});
+kbm.touch = touch;
 
 // ------------------------------------------------------------------ settings
 
@@ -199,7 +206,8 @@ function startLocal(mode) {
     kbm.setPad(true);
     controllers = [humanController(kbm), botController(settings.difficulty)];
     names = ['You', `CPU (${settings.difficulty})`];
-    bars = [{ slot: 0, labels: KEY_LABELS.kbm, side: 'center' }];
+    // On touch the on-screen buttons replace the ability bar (both would carry the same SVG ids).
+    bars = isTouchDevice() ? [] : [{ slot: 0, labels: KEY_LABELS.kbm, side: 'center' }];
   } else {
     kbm.setPad(false); // gamepads belong to player 2 in local play
     const p2 = new KeyboardP2();
@@ -212,6 +220,7 @@ function startLocal(mode) {
   session.mode = mode;
   session.onMatchEnd = (w) => showEnd(w);
   hud.setup({ classes, names, bars });
+  touch.show(mode === 'cpu' && isTouchDevice() ? classes[0] : null);
   $('#menu').classList.add('hidden');
 }
 
@@ -222,9 +231,11 @@ function startOnline(net, start) {
   session = new OnlineSession(net, start, startSeq);
   session.mode = 'online';
   session.onMatchEnd = (w) => showEnd(w);
-  hud.setup({ classes: start.classes, names: session.names, bars: [{ slot: start.you, labels: KEY_LABELS.kbm, side: 'center' }] });
+  const bars = isTouchDevice() ? [] : [{ slot: start.you, labels: KEY_LABELS.kbm, side: 'center' }];
+  hud.setup({ classes: start.classes, names: session.names, bars });
   $('#hud-hint').textContent = 'Enter chat · ESC pause · M mute';
   chat.show(session.names);
+  touch.show(isTouchDevice() ? start.classes[start.you] : null, { chat: true });
   $('#menu').classList.add('hidden');
   $('#end').classList.add('hidden');
 }
@@ -232,6 +243,7 @@ function startOnline(net, start) {
 function toMenu() {
   if (session && session.destroy) session.destroy();
   chat.hide();
+  touch.show(null);
   $('#hud-hint').textContent = 'ESC pause · M mute';
   $('#pause').classList.add('hidden');
   $('#end').classList.add('hidden');
@@ -492,6 +504,7 @@ function frame(now) {
     vfx.syncZones(view.zones, session.me);
     vfx.update(dt, world.time, view.orb, view.ringRadius);
     if (!session.quiet) hud.update(view, dt, positions);
+    if (touch.active && session.me >= 0) touch.update(view.players[session.me]);
     const focus = { x: (positions[0].x + positions[1].x) / 2, y: (positions[0].y + positions[1].y) / 2 };
     world.update(dt, focus);
   } else {
